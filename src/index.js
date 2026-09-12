@@ -36,4 +36,9 @@ client.once('ready', () => {
   startScheduler(client);
 });
 
+// --- DEBUG TEMPORAIRE : à retirer une fois le problème résolu ---
+const t = process.env.DISCORD_TOKEN;
+console.log('DEBUG token défini ?', !!t, '| longueur :', t ? t.length : 0);
+// -----------------------------------------------------------------
+
 client.login(process.env.DISCORD_TOKEN);
