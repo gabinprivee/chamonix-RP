@@ -1,13 +1,12 @@
+@'
 {
   "$schema": "https://railway.com/railway.schema.json",
-<<<<<<< HEAD
   "build": {
     "builder": "DOCKERFILE"
   },
-=======
->>>>>>> da939f4e0a2389516ddda3d397f1cd43d79c49d7
   "deploy": {
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }
 }
+'@ | Set-Content -Encoding utf8 railway.json
