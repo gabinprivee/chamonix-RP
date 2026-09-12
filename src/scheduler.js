@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { load, save } = require('./storage');
+const { buildDashboardEmbed } = require('./handlers/serviceDashboard');
 
 function parseDate(str) {
   const [d, m, y] = str.split('/').map(Number);
@@ -32,9 +33,34 @@ async function checkAbsences(client) {
   }
 }
 
+async function updateServiceDashboards(client) {
+  const dataDir = path.join(__dirname, '..', 'data');
+  if (!fs.existsSync(dataDir)) return;
+  for (const file of fs.readdirSync(dataDir)) {
+    if (!file.endsWith('.json')) continue;
+    const guildId = file.replace('.json', '');
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) continue;
+    const data = load(guildId);
+    const dashboard = data.config.service.dashboard;
+    if (!dashboard || !dashboard.channelId || !dashboard.messageId) continue;
+
+    const channel = await guild.channels.fetch(dashboard.channelId).catch(() => null);
+    if (!channel) continue;
+    const message = await channel.messages.fetch(dashboard.messageId).catch(() => null);
+    if (!message) continue;
+
+    const embed = buildDashboardEmbed(data);
+    await message.edit({ embeds: [embed] }).catch(() => {});
+  }
+}
+
 function startScheduler(client) {
   checkAbsences(client);
   setInterval(() => checkAbsences(client), 60 * 60 * 1000);
+
+  updateServiceDashboards(client);
+  setInterval(() => updateServiceDashboards(client), 20 * 1000);
 }
 
 module.exports = { startScheduler };
