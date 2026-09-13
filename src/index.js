@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { Client, GatewayIntentBits, Partials, Collection } = require('discord.js');
 const { startScheduler } = require('./scheduler');
+const { startWebServer } = require('./web/server');
 
 const client = new Client({
   intents: [
@@ -32,13 +33,9 @@ for (const file of fs.readdirSync(eventsPath).filter(f => f.endsWith('.js'))) {
   }
 }
 
-client.once('ready', () => {
+client.once('clientReady', () => {
   startScheduler(client);
+  startWebServer(client);
 });
-
-// --- DEBUG TEMPORAIRE : à retirer une fois le problème résolu ---
-const t = process.env.DISCORD_TOKEN;
-console.log('DEBUG token défini ?', !!t, '| longueur :', t ? t.length : 0);
-// -----------------------------------------------------------------
 
 client.login(process.env.DISCORD_TOKEN);
