@@ -50,7 +50,7 @@ function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-function renderPage(guild, members, roles, selectedRoleId) {
+function renderPage(guild, members, roles, selectedRoleId, searchQuery) {
   const roleOptions = roles
     .map(r => `<option value="${r.id}" ${r.id === selectedRoleId ? 'selected' : ''}>${escapeHtml(r.name)}</option>`)
     .join('');
@@ -83,7 +83,11 @@ function renderPage(guild, members, roles, selectedRoleId) {
   h1 { color: #fff; font-size: 20px; }
   .subtitle { color: #949ba4; margin-bottom: 24px; }
   form { margin-bottom: 16px; }
-  select, button { background: #2b2d31; color: #dbdee1; border: 1px solid #3f4147; border-radius: 6px; padding: 6px 10px; font-size: 14px; }
+  select, button, input[type="text"] { background: #2b2d31; color: #dbdee1; border: 1px solid #3f4147; border-radius: 6px; padding: 6px 10px; font-size: 14px; }
+  input[type="text"] { width: 220px; margin-right: 8px; }
+  button { cursor: pointer; margin-left: 8px; }
+  .clear-link { color: #949ba4; margin-left: 12px; font-size: 13px; text-decoration: none; }
+  .clear-link:hover { text-decoration: underline; }
   table { width: 100%; border-collapse: collapse; background: #2b2d31; border-radius: 8px; overflow: hidden; }
   th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid #3f4147; font-size: 14px; }
   th { background: #232428; color: #949ba4; text-transform: uppercase; font-size: 12px; }
@@ -96,13 +100,23 @@ function renderPage(guild, members, roles, selectedRoleId) {
 </head>
 <body>
   <h1>🖥️ Tableau de bord — ${escapeHtml(guild.name)}</h1>
-  <div class="subtitle">${members.length} membre(s) affiché(s) — lecture seule</div>
+  <div class="subtitle">
+    ${members.length} membre(s) affiché(s) — lecture seule
+    ${searchQuery ? ` — recherche : « ${escapeHtml(searchQuery)} »` : ''}
+  </div>
 
   <form method="get">
+    <input type="text" name="q" placeholder="Rechercher un membre par nom..." value="${escapeHtml(searchQuery)}">
     <select name="role" onchange="this.form.submit()">
       <option value="">Tous les rôles</option>
       ${roleOptions}
     </select>
+    <button type="submit">Rechercher</button>
+    ${
+      searchQuery || selectedRoleId
+        ? `<a href="/" class="clear-link">Réinitialiser</a>`
+        : ''
+    }
   </form>
 
   ${
@@ -129,6 +143,8 @@ function startWebServer(client) {
     await guild.members.fetch().catch(() => {});
     const data = load(guild.id);
     const selectedRoleId = req.query.role || '';
+    const searchQuery = (req.query.q || '').trim();
+    const searchLower = searchQuery.toLowerCase();
 
     const roles = guild.roles.cache
       .filter(r => r.id !== guild.id) // exclut @everyone
@@ -138,6 +154,7 @@ function startWebServer(client) {
     let members = guild.members.cache
       .filter(m => !m.user.bot)
       .filter(m => (selectedRoleId ? m.roles.cache.has(selectedRoleId) : true))
+      .filter(m => (searchLower ? m.displayName.toLowerCase().includes(searchLower) || m.user.username.toLowerCase().includes(searchLower) : true))
       .map(m => {
         const session = data.service[m.id];
         let totalSeconds = session ? session.totalSeconds : 0;
@@ -154,7 +171,7 @@ function startWebServer(client) {
       })
       .sort((a, b) => b.totalSeconds - a.totalSeconds);
 
-    res.send(renderPage(guild, members, roles, selectedRoleId));
+    res.send(renderPage(guild, members, roles, selectedRoleId, searchQuery));
   });
 
   const port = process.env.PORT || 3000;
