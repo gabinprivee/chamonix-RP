@@ -7,6 +7,29 @@ function fmtHours(seconds) {
   return `${h}h ${String(m).padStart(2, '0')}min`;
 }
 
+function parseDate(str) {
+  const parts = String(str).split('/').map(Number);
+  if (parts.length !== 3) return null;
+  const [d, m, y] = parts;
+  if (!d || !m || !y) return null;
+  const date = new Date(y, m - 1, d);
+  return isNaN(date.getTime()) ? null : date;
+}
+
+function absenceDaysThisMonth(absences, userId) {
+  const now = new Date();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+
+  return Object.values(absences)
+    .filter(a => a.userId === userId && (a.status === 'accepted' || a.status === 'terminee'))
+    .filter(a => {
+      const start = parseDate(a.start);
+      return start && start.getMonth() === currentMonth && start.getFullYear() === currentYear;
+    })
+    .reduce((sum, a) => sum + (a.durationDays || 0), 0);
+}
+
 function checkAuth(req, res, next) {
   const user = process.env.DASHBOARD_USER;
   const pass = process.env.DASHBOARD_PASSWORD;
@@ -44,6 +67,7 @@ function renderPage(guild, members, roles, selectedRoleId) {
         <td>${roleBadges || '—'}</td>
         <td>${fmtHours(m.totalSeconds)}</td>
         <td>${statusLabel}</td>
+        <td>${m.absenceDaysThisMonth} jour(s)</td>
       </tr>`;
     })
     .join('');
@@ -84,7 +108,7 @@ function renderPage(guild, members, roles, selectedRoleId) {
   ${
     members.length
       ? `<table>
-          <thead><tr><th>Membre</th><th>Rôles</th><th>Heures de service</th><th>Statut</th></tr></thead>
+          <thead><tr><th>Membre</th><th>Rôles</th><th>Heures de service</th><th>Statut</th><th>Jours d'absence (ce mois)</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>`
       : '<div class="empty">Aucun membre à afficher.</div>'
@@ -124,7 +148,8 @@ function startWebServer(client) {
           name: m.displayName,
           roles: m.roles.cache.filter(r => r.id !== guild.id).map(r => r.name),
           totalSeconds,
-          status: session ? session.status : 'stopped'
+          status: session ? session.status : 'stopped',
+          absenceDaysThisMonth: absenceDaysThisMonth(data.absences, m.id)
         };
       })
       .sort((a, b) => b.totalSeconds - a.totalSeconds);
