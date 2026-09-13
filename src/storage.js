@@ -17,10 +17,12 @@ function defaultData() {
       service: { channelId: null, adminRole: null, dashboard: { channelId: null, messageId: null } },
       sanction: { requiredRole: null, logChannel: null, types: [] },
       avis: { channelId: null },
-      annonce: { channelId: null, authorizedRole: null }
+      annonce: { channelId: null, authorizedRole: null },
+      identity: { channelId: null }
     },
     absences: {},
-    service: {}
+    service: {},
+    identities: {}
   };
 }
 
@@ -45,6 +47,7 @@ function load(guildId) {
   }
   if (!data.absences) data.absences = {};
   if (!data.service) data.service = {};
+  if (!data.identities) data.identities = {};
   return data;
 }
 

@@ -62,12 +62,17 @@ function renderPage(guild, members, roles, selectedRoleId, searchQuery) {
         m.status === 'running' ? '<span class="status running">🟢 En service</span>'
         : m.status === 'paused' ? '<span class="status paused">🟡 En pause</span>'
         : '<span class="status stopped">⚪ Arrêté</span>';
+      const identity = m.identity;
+      const robloxCell = identity
+        ? `${escapeHtml(identity.psRoblox)} <span class="sub">(@${escapeHtml(identity.atRoblox)})</span>`
+        : '—';
       return `<tr>
         <td>${escapeHtml(m.name)}</td>
         <td>${roleBadges || '—'}</td>
         <td>${fmtHours(m.totalSeconds)}</td>
         <td>${statusLabel}</td>
         <td>${m.absenceDaysThisMonth} jour(s)</td>
+        <td>${robloxCell}</td>
       </tr>`;
     })
     .join('');
@@ -96,6 +101,7 @@ function renderPage(guild, members, roles, selectedRoleId, searchQuery) {
   .status.paused { color: #f0b232; }
   .status.stopped { color: #949ba4; }
   .empty { padding: 24px; text-align: center; color: #949ba4; }
+  .sub { color: #949ba4; font-size: 12px; }
 </style>
 </head>
 <body>
@@ -122,7 +128,7 @@ function renderPage(guild, members, roles, selectedRoleId, searchQuery) {
   ${
     members.length
       ? `<table>
-          <thead><tr><th>Membre</th><th>Rôles</th><th>Heures de service</th><th>Statut</th><th>Jours d'absence (ce mois)</th></tr></thead>
+          <thead><tr><th>Membre</th><th>Rôles</th><th>Heures de service</th><th>Statut</th><th>Jours d'absence (ce mois)</th><th>Roblox</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>`
       : '<div class="empty">Aucun membre à afficher.</div>'
@@ -166,7 +172,8 @@ function startWebServer(client) {
           roles: m.roles.cache.filter(r => r.id !== guild.id).map(r => r.name),
           totalSeconds,
           status: session ? session.status : 'stopped',
-          absenceDaysThisMonth: absenceDaysThisMonth(data.absences, m.id)
+          absenceDaysThisMonth: absenceDaysThisMonth(data.absences, m.id),
+          identity: data.identities[m.id] || null
         };
       })
       .sort((a, b) => b.totalSeconds - a.totalSeconds);
