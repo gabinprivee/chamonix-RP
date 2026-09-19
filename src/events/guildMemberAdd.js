@@ -1,5 +1,6 @@
 const { load } = require('../storage');
 const { startCaptcha } = require('../handlers/captchaHandler');
+const { checkRaid } = require('../handlers/raidHandler');
 
 module.exports = {
   name: 'guildMemberAdd',
@@ -17,5 +18,6 @@ module.exports = {
     }
 
     await startCaptcha(member).catch(() => {});
+    await checkRaid(member).catch(() => {});
   }
 };

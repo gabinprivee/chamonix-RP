@@ -66,7 +66,6 @@ async function handleDangerousRoleAssign(entry, guild, protection, executorId) {
   const dangerous = addedRoles.filter(r => protection.dangerousRoles.includes(r.id));
   if (!dangerous.length) return;
 
-  // Retire immédiatement le(s) rôle(s) sensible(s) donné(s) à la cible
   const target = await guild.members.fetch(entry.targetId).catch(() => null);
   if (target) {
     await target.roles.remove(dangerous.map(r => r.id)).catch(() => {});
@@ -85,6 +84,29 @@ async function handleDangerousRoleAssign(entry, guild, protection, executorId) {
   );
 }
 
+async function handleGuildUpdate(entry, guild, protection, executorId) {
+  const relevantKeys = ['name', 'icon', 'vanity_url_code'];
+  const changes = (entry.changes || []).filter(c => relevantKeys.includes(c.key));
+  if (!changes.length) return;
+
+  const nameChange = changes.find(c => c.key === 'name');
+  let revertNote = '';
+  if (nameChange && nameChange.old) {
+    await guild.setName(nameChange.old).catch(() => {});
+    revertNote = ' — nom du serveur restauré automatiquement';
+  }
+  const hasIconOrVanity = changes.some(c => c.key === 'icon' || c.key === 'vanity_url_code');
+  if (hasIconOrVanity) {
+    revertNote += " — icône/lien personnalisé à restaurer manuellement si besoin (dernière sauvegarde : /backup-now)";
+  }
+
+  const member = await guild.members.fetch(executorId).catch(() => null);
+  if (!member) return;
+
+  const resultat = await punish(guild, member, protection.punishment);
+  await logAlert(guild, protection, `Modification du serveur (${changes.map(c => c.key).join(', ')})${revertNote}`, member, resultat);
+}
+
 async function handleAuditLogEntry(entry, guild) {
   const data = load(guild.id);
   const protection = data.config.protection;
@@ -98,6 +120,9 @@ async function handleAuditLogEntry(entry, guild) {
   if (entry.action === AuditLogEvent.MemberRoleUpdate) {
     return handleDangerousRoleAssign(entry, guild, protection, executorId);
   }
+  if (entry.action === AuditLogEvent.GuildUpdate) {
+    return handleGuildUpdate(entry, guild, protection, executorId);
+  }
 
   if (!WATCHED_ACTIONS.has(entry.action)) return;
 
@@ -108,4 +133,4 @@ async function handleAuditLogEntry(entry, guild) {
   await logAlert(guild, protection, ACTION_LABELS[entry.action] || String(entry.action), member, resultat);
 }
 
-module.exports = { handleAuditLogEntry };
+module.exports = { handleAuditLogEntry, punish, logAlert };

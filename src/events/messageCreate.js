@@ -1,4 +1,5 @@
 const { load, save } = require('../storage');
+const { checkSpam } = require('../handlers/antiSpamHandler');
 
 function extractField(content, label) {
   const regex = new RegExp(`\\*\\*${label}\\*\\*\\s*:?\\s*(.+)`, 'i');
@@ -12,6 +13,11 @@ module.exports = {
     if (message.author.bot || !message.guild) return;
 
     const data = load(message.guild.id);
+
+    // Anti-spam / anti-mention de masse (avant tout le reste)
+    const wasSpam = await checkSpam(message, data.config.protection).catch(() => false);
+    if (wasSpam) return;
+
     const identityChannel = data.config.identity.channelId;
     if (!identityChannel || message.channel.id !== identityChannel) return;
 
