@@ -4,6 +4,7 @@ const sanction = require('../handlers/sanctionHandler');
 const avis = require('../handlers/avisHandler');
 const annonce = require('../handlers/annonceHandler');
 const captcha = require('../handlers/captchaHandler');
+const rankupPanel = require('../handlers/rankupPanelHandler');
 
 module.exports = {
   name: 'interactionCreate',
@@ -40,6 +41,13 @@ module.exports = {
         if (id.startsWith('captcha_verify_')) {
           return captcha.handleVerifyButton(interaction, id.replace('captcha_verify_', ''));
         }
+
+        if (id === 'rankup_panel_add') return rankupPanel.handleAddButton(interaction);
+        if (id === 'rankup_panel_remove') return rankupPanel.handleRemoveButton(interaction);
+        if (id === 'rankup_panel_clear') return rankupPanel.handleClearButton(interaction);
+        if (id === 'rankup_panel_close') return rankupPanel.handleCloseButton(interaction);
+        if (id === 'rankup_panel_msg_up') return rankupPanel.handleMessageButton(interaction, 'up');
+        if (id === 'rankup_panel_msg_down') return rankupPanel.handleMessageButton(interaction, 'down');
         return;
       }
 
@@ -49,6 +57,13 @@ module.exports = {
           const token = id.replace('sanction_multi_type_select_', '');
           return sanction.handleMultiTypeSelect(interaction, token);
         }
+        if (id === 'rankup_panel_remove_select') return rankupPanel.handleRemoveSelect(interaction);
+        return;
+      }
+
+      if (interaction.isRoleSelectMenu()) {
+        const id = interaction.customId;
+        if (id === 'rankup_panel_add_select') return rankupPanel.handleAddSelect(interaction);
         return;
       }
 
@@ -68,7 +83,7 @@ module.exports = {
         if (id === 'annonce_modal') return annonce.handleAnnonceSubmit(interaction);
 
         if (id.startsWith('sanction_multi_reason_modal_')) {
-          const rest = id.replace('sanction_multi_reason_modal_', ''); // "<token>_<typeIndex>"
+          const rest = id.replace('sanction_multi_reason_modal_', '');
           const [token, typeIndex] = rest.split('_');
           return sanction.handleMultiReasonSubmit(interaction, token, typeIndex);
         }
@@ -83,6 +98,8 @@ module.exports = {
         if (id.startsWith('captcha_modal_')) {
           return captcha.handleModalSubmit(interaction, id.replace('captcha_modal_', ''));
         }
+        if (id === 'rankup_panel_msg_up_modal') return rankupPanel.handleMessageModalSubmit(interaction, 'up');
+        if (id === 'rankup_panel_msg_down_modal') return rankupPanel.handleMessageModalSubmit(interaction, 'down');
         return;
       }
     } catch (err) {

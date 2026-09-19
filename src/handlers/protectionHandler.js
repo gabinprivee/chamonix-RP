@@ -1,7 +1,6 @@
 const { AuditLogEvent, EmbedBuilder } = require('discord.js');
 const { load } = require('../storage');
 
-// Actions considérées comme sensibles : si l'auteur n'est pas whitelist, il est sanctionné.
 const WATCHED_ACTIONS = new Set([
   AuditLogEvent.ChannelDelete,
   AuditLogEvent.RoleDelete,
@@ -19,6 +18,12 @@ const ACTION_LABELS = {
   [AuditLogEvent.WebhookCreate]: "Création d'un webhook",
   [AuditLogEvent.BotAdd]: "Ajout d'un bot/intégration"
 };
+
+async function notifyMember(member, reason) {
+  await member
+    .send(`🛡️ Tu as été sanctionné automatiquement sur **${member.guild.name}** par la protection anti-nuke.\nRaison : ${reason}`)
+    .catch(() => {});
+}
 
 async function punish(guild, member, punishment) {
   if (member.id === guild.ownerId) return 'ignoré (propriétaire du serveur)';
@@ -42,6 +47,12 @@ async function punish(guild, member, punishment) {
   }
 }
 
+async function punishAndNotify(guild, member, punishment, reason) {
+  const resultat = await punish(guild, member, punishment);
+  await notifyMember(member, reason);
+  return resultat;
+}
+
 async function logAlert(guild, protection, actionLabel, member, resultat) {
   if (!protection.logChannel) return;
   const channel = await guild.channels.fetch(protection.logChannel).catch(() => null);
@@ -55,7 +66,8 @@ async function logAlert(guild, protection, actionLabel, member, resultat) {
     )
     .setColor(0xe74c3c)
     .setTimestamp();
-  await channel.send({ embeds: [embed] }).catch(() => {});
+  // Le "content" ping réellement la personne, contrairement à un simple champ d'embed
+  await channel.send({ content: `${member}`, embeds: [embed] }).catch(() => {});
 }
 
 async function handleDangerousRoleAssign(entry, guild, protection, executorId) {
@@ -74,14 +86,9 @@ async function handleDangerousRoleAssign(entry, guild, protection, executorId) {
   const member = await guild.members.fetch(executorId).catch(() => null);
   if (!member) return;
 
-  const resultat = await punish(guild, member, protection.punishment);
-  await logAlert(
-    guild,
-    protection,
-    `Attribution d'un rôle sensible (${dangerous.map(r => r.name).join(', ')}) à ${target || entry.targetId}`,
-    member,
-    resultat
-  );
+  const label = `Attribution d'un rôle sensible (${dangerous.map(r => r.name).join(', ')}) à ${target || entry.targetId}`;
+  const resultat = await punishAndNotify(guild, member, protection.punishment, label);
+  await logAlert(guild, protection, label, member, resultat);
 }
 
 async function handleGuildUpdate(entry, guild, protection, executorId) {
@@ -103,8 +110,40 @@ async function handleGuildUpdate(entry, guild, protection, executorId) {
   const member = await guild.members.fetch(executorId).catch(() => null);
   if (!member) return;
 
-  const resultat = await punish(guild, member, protection.punishment);
-  await logAlert(guild, protection, `Modification du serveur (${changes.map(c => c.key).join(', ')})${revertNote}`, member, resultat);
+  const label = `Modification du serveur (${changes.map(c => c.key).join(', ')})${revertNote}`;
+  const resultat = await punishAndNotify(guild, member, protection.punishment, label);
+  await logAlert(guild, protection, label, member, resultat);
+}
+
+/**
+ * Filet de sécurité : détecte toute apparition d'un rôle sensible sur un membre,
+ * même quand elle n'est pas passée par le chemin normal (ex: auto-attribution via
+ * un menu de rôles Discord natif, qui ne génère pas toujours d'entrée de journal
+ * d'audit). Laisse d'abord une marge à guildAuditLogEntryCreate pour traiter le cas.
+ */
+async function handleMemberUpdate(oldMember, newMember) {
+  const data = load(newMember.guild.id);
+  const protection = data.config.protection;
+  if (!protection.enabled || !protection.dangerousRoles.length) return;
+  if (protection.whitelist.includes(newMember.id)) return;
+  if (newMember.id === newMember.guild.ownerId) return;
+
+  const addedDangerous = newMember.roles.cache.filter(
+    r => !oldMember.roles.cache.has(r.id) && protection.dangerousRoles.includes(r.id)
+  );
+  if (!addedDangerous.size) return;
+
+  await new Promise(res => setTimeout(res, 2000));
+
+  const fresh = await newMember.fetch().catch(() => null);
+  if (!fresh) return;
+  const stillHas = addedDangerous.filter(r => fresh.roles.cache.has(r.id));
+  if (!stillHas.size) return; // déjà traité par le chemin normal (journal d'audit)
+
+  await fresh.roles.remove(stillHas.map(r => r.id)).catch(() => {});
+  const label = `Possession non autorisée d'un rôle sensible (${stillHas.map(r => r.name).join(', ')})`;
+  const resultat = await punishAndNotify(fresh.guild, fresh, protection.punishment, label);
+  await logAlert(fresh.guild, protection, label, fresh, resultat);
 }
 
 async function handleAuditLogEntry(entry, guild) {
@@ -114,8 +153,8 @@ async function handleAuditLogEntry(entry, guild) {
 
   const executorId = entry.executorId;
   if (!executorId) return;
-  if (executorId === guild.client.user.id) return; // le bot lui-même
-  if (protection.whitelist.includes(executorId)) return; // personne autorisée
+  if (executorId === guild.client.user.id) return;
+  if (protection.whitelist.includes(executorId)) return;
 
   if (entry.action === AuditLogEvent.MemberRoleUpdate) {
     return handleDangerousRoleAssign(entry, guild, protection, executorId);
@@ -129,8 +168,9 @@ async function handleAuditLogEntry(entry, guild) {
   const member = await guild.members.fetch(executorId).catch(() => null);
   if (!member) return;
 
-  const resultat = await punish(guild, member, protection.punishment);
-  await logAlert(guild, protection, ACTION_LABELS[entry.action] || String(entry.action), member, resultat);
+  const label = ACTION_LABELS[entry.action] || String(entry.action);
+  const resultat = await punishAndNotify(guild, member, protection.punishment, label);
+  await logAlert(guild, protection, label, member, resultat);
 }
 
-module.exports = { handleAuditLogEntry, punish, logAlert };
+module.exports = { handleAuditLogEntry, handleMemberUpdate, punish, punishAndNotify, logAlert, notifyMember };

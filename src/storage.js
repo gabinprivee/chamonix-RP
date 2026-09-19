@@ -14,20 +14,35 @@ function defaultData() {
       staffRole: null,
       absence: { requestChannel: null, validationChannel: null, approverRole: null, tiers: [] },
       reactionRole: { channelId: null, messageId: null, emoji: null, roleId: null, excludedRoleId: null, link: null },
-      rankup: { thresholdRole: null, ladder: [] },
+      rankup: {
+        thresholdRole: null,
+        derankThresholdRole: null,
+        ladder: [],
+        messageUp: null,
+        messageDown: null
+      },
       service: { channelId: null, adminRole: null, dashboard: { channelId: null, messageId: null } },
       sanction: { requiredRole: null, logChannel: null, types: [] },
       avis: { channelId: null },
       annonce: { channelId: null, authorizedRole: null },
       identity: { channelId: null },
-      protection: { enabled: false, whitelist: [], logChannel: null, punishment: 'strip_roles', dangerousRoles: [] },
+      protection: {
+        enabled: false,
+        whitelist: [],
+        logChannel: null,
+        punishment: 'strip_roles',
+        dangerousRoles: [],
+        antiSpam: { maxMentions: 6, maxMessages: 6, intervalSeconds: 6 }
+      },
       backup: { channelId: null },
       welcome: { channelId: null, joinMessage: null, leaveMessage: null },
-      captcha: { enabled: false, channelId: null, verifiedRole: null, unverifiedRole: null }
+      captcha: { enabled: false, channelId: null, verifiedRole: null, unverifiedRole: null },
+      jail: { role: null, logChannel: null }
     },
     absences: {},
     service: {},
-    identities: {}
+    identities: {},
+    jails: {}
   };
 }
 
@@ -52,6 +67,14 @@ function load(guildId) {
     const isObject = defVal !== null && typeof defVal === 'object' && !Array.isArray(defVal);
     if (isObject) {
       data.config[key] = { ...defVal, ...(data.config[key] || {}) };
+      // fusion d'un niveau supplémentaire pour les sous-objets (ex: protection.antiSpam)
+      for (const subKey of Object.keys(defVal)) {
+        const subDefVal = defVal[subKey];
+        const subIsObject = subDefVal !== null && typeof subDefVal === 'object' && !Array.isArray(subDefVal);
+        if (subIsObject) {
+          data.config[key][subKey] = { ...subDefVal, ...(data.config[key][subKey] || {}) };
+        }
+      }
     } else if (data.config[key] === undefined) {
       data.config[key] = defVal;
     }
@@ -59,6 +82,7 @@ function load(guildId) {
   if (!data.absences) data.absences = {};
   if (!data.service) data.service = {};
   if (!data.identities) data.identities = {};
+  if (!data.jails) data.jails = {};
   return data;
 }
 
