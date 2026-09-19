@@ -181,7 +181,7 @@ function startWebServer(client) {
     res.send(renderPage(guild, members, roles, selectedRoleId, searchQuery));
   });
 
-  const port = process.env.PORT || 3000;
+  const port = process.env.SERVER_PORT || process.env.PORT || 3000;
   app.listen(port, () => {
     console.log(`✅ Tableau de bord web démarré sur le port ${port}`);
   });
