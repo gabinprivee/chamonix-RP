@@ -1,3 +1,4 @@
+const { isStaff } = require('../permissions');
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const { load, save } = require('../storage');
 
@@ -20,6 +21,8 @@ module.exports = {
     )
     .addSubcommand(sc => sc.setName('voir').setDescription('Voir la liste blanche actuelle')),
   async execute(interaction) {
+    if (!(await isStaff(interaction))) return interaction.reply({ content: "⛔ Tu n'as pas le rôle requis pour utiliser cette commande.", ephemeral: true });
+
     const data = load(interaction.guild.id);
     const sub = interaction.options.getSubcommand();
 

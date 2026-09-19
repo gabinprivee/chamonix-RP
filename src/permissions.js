@@ -10,4 +10,18 @@ function hasRoleAtOrAbove(member, referenceRoleId) {
   return member.roles.highest.position >= refRole.position;
 }
 
-module.exports = { hasRoleAtOrAbove };
+/**
+ * Vérifie que l'utilisateur a le rôle "staff" configuré (ou au-dessus).
+ * Si aucun rôle staff n'est configuré sur le serveur, la commande reste
+ * ouverte (pas de restriction supplémentaire tant que /staff-config n'a
+ * pas été utilisé).
+ */
+async function isStaff(interaction) {
+  const { load } = require('./storage');
+  const data = load(interaction.guild.id);
+  const staffRole = data.config.staffRole;
+  if (!staffRole) return true;
+  return hasRoleAtOrAbove(interaction.member, staffRole);
+}
+
+module.exports = { hasRoleAtOrAbove, isStaff };

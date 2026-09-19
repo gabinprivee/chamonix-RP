@@ -1,3 +1,4 @@
+const { isStaff } = require('../permissions');
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, EmbedBuilder } = require('discord.js');
 const { load, save } = require('../storage');
 
@@ -20,6 +21,8 @@ module.exports = {
       o.setName('lien').setDescription('Lien envoyé en MP aux personnes ayant le rôle exclu').setRequired(false)
     ),
   async execute(interaction) {
+    if (!(await isStaff(interaction))) return interaction.reply({ content: "⛔ Tu n'as pas le rôle requis pour utiliser cette commande.", ephemeral: true });
+
     const channel = interaction.options.getChannel('salon');
     const emoji = interaction.options.getString('emoji');
     const role = interaction.options.getRole('role');

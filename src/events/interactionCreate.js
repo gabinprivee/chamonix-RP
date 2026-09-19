@@ -3,6 +3,7 @@ const service = require('../handlers/serviceHandler');
 const sanction = require('../handlers/sanctionHandler');
 const avis = require('../handlers/avisHandler');
 const annonce = require('../handlers/annonceHandler');
+const captcha = require('../handlers/captchaHandler');
 
 module.exports = {
   name: 'interactionCreate',
@@ -35,14 +36,18 @@ module.exports = {
 
         if (id === 'avis_open') return avis.openAvisModal(interaction);
         if (id === 'annonce_open') return annonce.openAnnonceModal(interaction);
+
+        if (id.startsWith('captcha_verify_')) {
+          return captcha.handleVerifyButton(interaction, id.replace('captcha_verify_', ''));
+        }
         return;
       }
 
       if (interaction.isStringSelectMenu()) {
         const id = interaction.customId;
-        if (id.startsWith('sanction_type_select_')) {
-          const targetId = id.replace('sanction_type_select_', '');
-          return sanction.handleTypeSelect(interaction, targetId);
+        if (id.startsWith('sanction_multi_type_select_')) {
+          const token = id.replace('sanction_multi_type_select_', '');
+          return sanction.handleMultiTypeSelect(interaction, token);
         }
         return;
       }
@@ -52,6 +57,7 @@ module.exports = {
         if (id === 'service_admin_forcestop_select') return service.handleAdminForceStopResolve(interaction);
         if (id === 'service_admin_add_select') return service.handleAdminAddResolve(interaction);
         if (id === 'service_admin_remove_select') return service.handleAdminRemoveResolve(interaction);
+        if (id === 'sanction_multi_select') return sanction.handleMultiUserSelect(interaction);
         return;
       }
 
@@ -61,10 +67,10 @@ module.exports = {
         if (id === 'avis_modal') return avis.handleAvisSubmit(interaction);
         if (id === 'annonce_modal') return annonce.handleAnnonceSubmit(interaction);
 
-        if (id.startsWith('sanction_reason_modal_')) {
-          const rest = id.replace('sanction_reason_modal_', ''); // "<targetId>_<typeIndex>"
-          const [targetId, typeIndex] = rest.split('_');
-          return sanction.handleReasonSubmit(interaction, targetId, typeIndex);
+        if (id.startsWith('sanction_multi_reason_modal_')) {
+          const rest = id.replace('sanction_multi_reason_modal_', ''); // "<token>_<typeIndex>"
+          const [token, typeIndex] = rest.split('_');
+          return sanction.handleMultiReasonSubmit(interaction, token, typeIndex);
         }
         if (id.startsWith('service_admin_add_modal_')) {
           const userId = id.replace('service_admin_add_modal_', '');
@@ -73,6 +79,9 @@ module.exports = {
         if (id.startsWith('service_admin_remove_modal_')) {
           const userId = id.replace('service_admin_remove_modal_', '');
           return service.handleAdminRemoveModalSubmit(interaction, userId);
+        }
+        if (id.startsWith('captcha_modal_')) {
+          return captcha.handleModalSubmit(interaction, id.replace('captcha_modal_', ''));
         }
         return;
       }

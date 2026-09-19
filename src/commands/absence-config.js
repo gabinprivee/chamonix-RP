@@ -1,3 +1,4 @@
+const { isStaff } = require('../permissions');
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType } = require('discord.js');
 const { load, save } = require('../storage');
 
@@ -18,6 +19,8 @@ module.exports = {
     )
     .addRoleOption(o => o.setName('role_validateur').setDescription('Rôle minimum pour valider une absence').setRequired(true)),
   async execute(interaction) {
+    if (!(await isStaff(interaction))) return interaction.reply({ content: "⛔ Tu n'as pas le rôle requis pour utiliser cette commande.", ephemeral: true });
+
     const data = load(interaction.guild.id);
     data.config.absence.requestChannel = interaction.options.getChannel('salon_demande').id;
     data.config.absence.validationChannel = interaction.options.getChannel('salon_validation').id;

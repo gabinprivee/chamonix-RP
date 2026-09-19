@@ -1,3 +1,4 @@
+const { isStaff } = require('../permissions');
 const { SlashCommandBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const { load } = require('../storage');
 
@@ -7,6 +8,8 @@ module.exports = {
     .setDescription("Poster le panneau de déclaration d'absence")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
   async execute(interaction) {
+    if (!(await isStaff(interaction))) return interaction.reply({ content: "⛔ Tu n'as pas le rôle requis pour utiliser cette commande.", ephemeral: true });
+
     const data = load(interaction.guild.id);
     const { requestChannel } = data.config.absence;
     if (!requestChannel) return interaction.reply({ content: "⚠️ Configure d'abord `/absence-config`.", ephemeral: true });

@@ -1,3 +1,4 @@
+const { isStaff } = require('../permissions');
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType } = require('discord.js');
 const { load, save } = require('../storage');
 
@@ -14,6 +15,8 @@ module.exports = {
         .setRequired(true)
     ),
   async execute(interaction) {
+    if (!(await isStaff(interaction))) return interaction.reply({ content: "⛔ Tu n'as pas le rôle requis pour utiliser cette commande.", ephemeral: true });
+
     const data = load(interaction.guild.id);
     data.config.backup.channelId = interaction.options.getChannel('salon').id;
     save(interaction.guild.id, data);

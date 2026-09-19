@@ -11,6 +11,7 @@ function filePath(guildId) {
 function defaultData() {
   return {
     config: {
+      staffRole: null,
       absence: { requestChannel: null, validationChannel: null, approverRole: null, tiers: [] },
       reactionRole: { channelId: null, messageId: null, emoji: null, roleId: null, excludedRoleId: null, link: null },
       rankup: { thresholdRole: null, ladder: [] },
@@ -19,8 +20,10 @@ function defaultData() {
       avis: { channelId: null },
       annonce: { channelId: null, authorizedRole: null },
       identity: { channelId: null },
-      protection: { enabled: false, whitelist: [], logChannel: null, punishment: 'strip_roles' },
-      backup: { channelId: null }
+      protection: { enabled: false, whitelist: [], logChannel: null, punishment: 'strip_roles', dangerousRoles: [] },
+      backup: { channelId: null },
+      welcome: { channelId: null, joinMessage: null, leaveMessage: null },
+      captcha: { enabled: false, channelId: null, verifiedRole: null, unverifiedRole: null }
     },
     absences: {},
     service: {},
@@ -45,7 +48,13 @@ function load(guildId) {
   const def = defaultData();
   data.config = data.config || {};
   for (const key of Object.keys(def.config)) {
-    data.config[key] = { ...def.config[key], ...(data.config[key] || {}) };
+    const defVal = def.config[key];
+    const isObject = defVal !== null && typeof defVal === 'object' && !Array.isArray(defVal);
+    if (isObject) {
+      data.config[key] = { ...defVal, ...(data.config[key] || {}) };
+    } else if (data.config[key] === undefined) {
+      data.config[key] = defVal;
+    }
   }
   if (!data.absences) data.absences = {};
   if (!data.service) data.service = {};

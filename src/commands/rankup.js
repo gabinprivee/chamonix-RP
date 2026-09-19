@@ -9,7 +9,7 @@ module.exports = {
     .addUserOption(o => o.setName('membre').setDescription('Membre à promouvoir').setRequired(true)),
   async execute(interaction) {
     const data = load(interaction.guild.id);
-    const { thresholdRole, eligibleRole, ladder } = data.config.rankup;
+    const { thresholdRole, ladder } = data.config.rankup;
 
     if (!hasRoleAtOrAbove(interaction.member, thresholdRole)) {
       return interaction.reply({ content: "⛔ Tu n'as pas la permission d'utiliser cette commande.", ephemeral: true });
@@ -20,13 +20,6 @@ module.exports = {
 
     const target = interaction.options.getMember('membre');
     if (!target) return interaction.reply({ content: 'Membre introuvable.', ephemeral: true });
-
-    if (eligibleRole && !hasRoleAtOrAbove(target, eligibleRole)) {
-      return interaction.reply({
-        content: `⚠️ ${target} n'a pas au moins le rôle <@&${eligibleRole}> requis pour être promu.`,
-        ephemeral: true
-      });
-    }
 
     const currentIndex = ladder.reduce((found, roleId, i) => (target.roles.cache.has(roleId) ? i : found), -1);
 
