@@ -13,7 +13,7 @@ function defaultData() {
     config: {
       absence: { requestChannel: null, validationChannel: null, approverRole: null, tiers: [] },
       reactionRole: { channelId: null, messageId: null, emoji: null, roleId: null, excludedRoleId: null, link: null },
-      rankup: { thresholdRole: null, ladder: [] },
+      rankup: { thresholdRole: null, eligibleRole: null, ladder: [] },
       service: { channelId: null, adminRole: null, dashboard: { channelId: null, messageId: null } },
       sanction: { requiredRole: null, logChannel: null, types: [] },
       avis: { channelId: null },
