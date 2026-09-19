@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { load, save } = require('./storage');
 const { buildDashboardEmbed } = require('./handlers/serviceDashboard');
+const { performBackup } = require('./handlers/backupHandler');
 
 function parseDate(str) {
   const [d, m, y] = str.split('/').map(Number);
@@ -55,12 +56,28 @@ async function updateServiceDashboards(client) {
   }
 }
 
+async function runScheduledBackups(client) {
+  const dataDir = path.join(__dirname, '..', 'data');
+  if (!fs.existsSync(dataDir)) return;
+  for (const file of fs.readdirSync(dataDir)) {
+    if (!file.endsWith('.json')) continue;
+    const guildId = file.replace('.json', '');
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) continue;
+    const data = load(guildId);
+    if (!data.config.backup.channelId) continue;
+    await performBackup(guild, data.config.backup.channelId).catch(() => {});
+  }
+}
+
 function startScheduler(client) {
   checkAbsences(client);
   setInterval(() => checkAbsences(client), 60 * 60 * 1000);
 
   updateServiceDashboards(client);
   setInterval(() => updateServiceDashboards(client), 20 * 1000);
+
+  setInterval(() => runScheduledBackups(client), 6 * 60 * 60 * 1000);
 }
 
 module.exports = { startScheduler };
