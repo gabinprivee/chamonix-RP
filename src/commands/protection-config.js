@@ -25,7 +25,7 @@ module.exports = {
     .addIntegerOption(o =>
       o
         .setName('seuil_mutes_par_jour')
-        .setDescription("Nombre de mutes dans la même journée avant d'appliquer cette sanction automatiquement (par défaut : 3)")
+        .setDescription("Nombre de mutes/jour avant sanction automatique (défaut : 3)")
         .setMinValue(1)
         .setRequired(false)
     ),
