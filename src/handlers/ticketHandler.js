@@ -50,11 +50,13 @@ async function openTicket(interaction) {
   const category = tickets.categories[categoryIndex];
   if (!category) return interaction.reply({ content: '⚠️ Catégorie introuvable.', ephemeral: true });
 
-  if (!tickets.ticketCategoryId || !tickets.supportRole) {
-    return interaction.reply({ content: "⚠️ Le système de tickets n'est pas entièrement configuré (voir /ticket-config).", ephemeral: true });
+  if (!category.discordCategoryId || !category.roleId) {
+    return interaction.reply({
+      content: "⚠️ Cette catégorie de ticket est mal configurée (catégorie Discord ou rôle manquant). Préviens un admin.",
+      ephemeral: true
+    });
   }
 
-  // Empêche un membre d'ouvrir plusieurs tickets ouverts en même temps
   const alreadyOpen = Object.values(data.tickets).find(t => t.openerId === interaction.user.id && t.status === 'open');
   if (alreadyOpen) {
     return interaction.reply({ content: `⚠️ Tu as déjà un ticket ouvert : <#${alreadyOpen.channelId}>.`, ephemeral: true });
@@ -70,7 +72,7 @@ async function openTicket(interaction) {
     .create({
       name: channelName,
       type: ChannelType.GuildText,
-      parent: tickets.ticketCategoryId,
+      parent: category.discordCategoryId,
       permissionOverwrites: [
         { id: interaction.guild.id, deny: [PermissionFlagsBits.ViewChannel] },
         {
@@ -78,7 +80,7 @@ async function openTicket(interaction) {
           allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory]
         },
         {
-          id: tickets.supportRole,
+          id: category.roleId,
           allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory]
         },
         {
@@ -95,13 +97,16 @@ async function openTicket(interaction) {
     .catch(() => null);
 
   if (!channel) {
-    return interaction.editReply({ content: "❌ Impossible de créer le salon du ticket (vérifie les permissions du bot et la catégorie configurée)." });
+    return interaction.editReply({
+      content: "❌ Impossible de créer le salon du ticket (vérifie que le bot a la permission Gérer les salons, et que sa catégorie Discord n'a pas atteint la limite de 50 salons)."
+    });
   }
 
   data.tickets[channel.id] = {
     number,
     openerId: interaction.user.id,
     category: category.label,
+    roleId: category.roleId,
     status: 'open',
     assignedTo: null,
     createdAt: Date.now(),
@@ -112,22 +117,17 @@ async function openTicket(interaction) {
 
   const embed = new EmbedBuilder()
     .setTitle(`🎫 Ticket #${number} — ${category.label}`)
-    .setDescription(`Bienvenue ${interaction.user} !\nUn membre de <@&${tickets.supportRole}> va s'occuper de toi. Décris ton problème ci-dessous.`)
+    .setDescription(`Bienvenue ${interaction.user} !\nUn membre de <@&${category.roleId}> va s'occuper de toi. Décris ton problème ci-dessous.`)
     .setColor(0x5865f2)
     .setTimestamp();
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('ticket_close').setLabel('Fermer le ticket').setStyle(ButtonStyle.Danger)
   );
 
-  await channel.send({ content: `${interaction.user} <@&${tickets.supportRole}>`, embeds: [embed], components: [row] });
+  await channel.send({ content: `${interaction.user} <@&${category.roleId}>`, embeds: [embed], components: [row] });
   await interaction.editReply({ content: `✅ Ticket créé : ${channel}` });
 }
 
-/**
- * À appeler pour chaque message envoyé dans un salon. Si c'est un salon de
- * ticket ouvert et que l'auteur fait partie du support (et n'est pas
- * l'ouvreur du ticket) et qu'aucun assigné n'est encore défini, on l'assigne.
- */
 async function assignIfStaffReply(message) {
   const data = load(message.guild.id);
   const ticket = data.tickets[message.channel.id];
@@ -142,9 +142,8 @@ async function assignIfStaffReply(message) {
     return;
   }
 
-  const supportRole = data.config.tickets.supportRole;
   const member = message.member;
-  if (!member || !supportRole || !member.roles.cache.has(supportRole)) return;
+  if (!member || !ticket.roleId || !member.roles.cache.has(ticket.roleId)) return;
 
   ticket.assignedTo = message.author.id;
   ticket.lastStaffReplyAt = Date.now();
@@ -168,7 +167,7 @@ async function buildTranscript(channel) {
 async function closeTicket(interaction) {
   const data = load(interaction.guild.id);
   const ticket = data.tickets[interaction.channel.id];
-  if (!ticket) return interaction.reply({ content: '⚠️ Ce salon n\'est pas un ticket géré par le bot.', ephemeral: true });
+  if (!ticket) return interaction.reply({ content: "⚠️ Ce salon n'est pas un ticket géré par le bot.", ephemeral: true });
   if (ticket.status === 'closed') return interaction.reply({ content: 'Ce ticket est déjà fermé.', ephemeral: true });
 
   await interaction.deferReply();
@@ -204,12 +203,8 @@ async function closeTicket(interaction) {
   setTimeout(() => interaction.channel.delete().catch(() => {}), 10000);
 }
 
-/**
- * Appelé périodiquement par le scheduler : relance dans chaque ticket ouvert
- * n'ayant pas eu d'activité staff depuis "reminderHours" heures.
- */
 async function checkReminders(guild, data) {
-  const { reminderHours, logChannel } = data.config.tickets;
+  const { reminderHours } = data.config.tickets;
   const intervalMs = (reminderHours || 24) * 60 * 60 * 1000;
   const now = Date.now();
   let changed = false;
@@ -222,7 +217,7 @@ async function checkReminders(guild, data) {
     const channel = await guild.channels.fetch(channelId).catch(() => null);
     if (!channel) continue;
 
-    const mention = ticket.assignedTo ? `<@${ticket.assignedTo}>` : `<@&${data.config.tickets.supportRole}>`;
+    const mention = ticket.assignedTo ? `<@${ticket.assignedTo}>` : `<@&${ticket.roleId}>`;
     await channel
       .send(`⏰ ${mention} Ce ticket est ouvert depuis un moment sans mise à jour. Peut-on le fermer, ou faut-il continuer ?`)
       .catch(() => {});

@@ -29,11 +29,21 @@ function defaultData() {
       protection: {
         enabled: false,
         whitelist: [],
+        whitelistRoles: [],
         logChannel: null,
         punishment: 'strip_roles',
         dangerousRoles: [],
         antiSpam: { maxMentions: 6, maxMessages: 6, intervalSeconds: 6 },
-        escalationThreshold: 3
+        escalationThreshold: 3,
+        actionFlood: { threshold: 3, windowSeconds: 10 },
+        raid: {
+          thresholdJoins: 5,
+          windowSeconds: 15,
+          kickNewAccounts: false,
+          newAccountMinDays: 3,
+          tempLockdown: false,
+          lockdownMinutes: 10
+        }
       },
       backup: { channelId: null },
       welcome: { channelId: null, joinMessage: null, leaveMessage: null },
@@ -41,8 +51,6 @@ function defaultData() {
       jail: { role: null, logChannel: null },
       tickets: {
         panelChannelId: null,
-        ticketCategoryId: null,
-        supportRole: null,
         logChannel: null,
         reminderHours: 24,
         categories: [],

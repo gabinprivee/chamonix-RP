@@ -1,5 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 const { recordMuteAndCheckEscalation } = require('./escalationHandler');
+const { isExempt } = require('./protectionHandler');
 
 const messageTimestamps = new Map(); // clé "guildId:userId" -> [timestamps]
 
@@ -35,7 +36,7 @@ async function logSpamAlert(guild, protection, member, reason, resultat) {
 
 async function checkSpam(message, protection) {
   if (!protection.enabled) return false;
-  if (protection.whitelist.includes(message.author.id)) return false;
+  if (await isExempt(message.guild, message.author.id, protection)) return false;
 
   let member = message.member;
   if (!member) {

@@ -14,10 +14,10 @@ module.exports = {
     }
     const data = load(interaction.guild.id);
     if (!data.config.tickets.categories.length) {
-      return interaction.reply({ content: "⚠️ Ajoute au moins une catégorie avec `/ticket-category ajouter` avant de poster le panneau.", ephemeral: true });
-    }
-    if (!data.config.tickets.ticketCategoryId || !data.config.tickets.supportRole) {
-      return interaction.reply({ content: "⚠️ Configure d'abord `/ticket-config`.", ephemeral: true });
+      return interaction.reply({
+        content: "⚠️ Ajoute au moins une catégorie avec `/ticket-category ajouter` avant de poster le panneau.",
+        ephemeral: true
+      });
     }
     await interaction.channel.send({ embeds: [buildPanelEmbed()], components: [buildPanelRow(data)] });
     await interaction.reply({ content: '✅ Panneau posté.', ephemeral: true });

@@ -1,5 +1,5 @@
 const { load, save } = require('../storage');
-const { punishAndNotify, logAlert } = require('./protectionHandler');
+const { punishAndNotify, logAlert, isExempt } = require('./protectionHandler');
 
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
@@ -26,7 +26,7 @@ async function recordMuteAndCheckEscalation(member, reasonLabel) {
   save(guild.id, data);
 
   if (!protection.enabled) return;
-  if (protection.whitelist.includes(member.id)) return;
+  if (await isExempt(guild, member.id, protection)) return;
   if (member.id === guild.ownerId) return;
 
   const threshold = protection.escalationThreshold || 3;

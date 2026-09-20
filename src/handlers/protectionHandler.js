@@ -1,4 +1,4 @@
-const { AuditLogEvent, EmbedBuilder } = require('discord.js');
+const { AuditLogEvent, EmbedBuilder, PermissionsBitField } = require('discord.js');
 const { load } = require('../storage');
 
 const WATCHED_ACTIONS = new Set([
@@ -6,8 +6,7 @@ const WATCHED_ACTIONS = new Set([
   AuditLogEvent.RoleDelete,
   AuditLogEvent.MemberBanAdd,
   AuditLogEvent.MemberKick,
-  AuditLogEvent.WebhookCreate,
-  AuditLogEvent.BotAdd
+  AuditLogEvent.WebhookCreate
 ]);
 
 const ACTION_LABELS = {
@@ -15,9 +14,36 @@ const ACTION_LABELS = {
   [AuditLogEvent.RoleDelete]: 'Suppression de rôle',
   [AuditLogEvent.MemberBanAdd]: 'Bannissement',
   [AuditLogEvent.MemberKick]: 'Expulsion',
-  [AuditLogEvent.WebhookCreate]: "Création d'un webhook",
-  [AuditLogEvent.BotAdd]: "Ajout d'un bot/intégration"
+  [AuditLogEvent.WebhookCreate]: "Création d'un webhook"
 };
+
+// Suivi des actions sensibles par auteur, pour détecter une rafale (comportement typique de nuke bot)
+const actionHistory = new Map(); // clé "guildId:userId" -> [timestamps]
+
+/**
+ * Un utilisateur est exempté de la protection s'il est directement whitelist,
+ * ou s'il possède un rôle marqué whitelist.
+ */
+async function isExempt(guild, userId, protection) {
+  if (protection.whitelist.includes(userId)) return true;
+  if (!protection.whitelistRoles?.length) return false;
+  const member = await guild.members.fetch(userId).catch(() => null);
+  if (!member) return false;
+  return member.roles.cache.some(r => protection.whitelistRoles.includes(r.id));
+}
+
+function recordActionAndCheckFlood(guild, userId, protection) {
+  const key = `${guild.id}:${userId}`;
+  const now = Date.now();
+  const windowMs = (protection.actionFlood?.windowSeconds || 10) * 1000;
+  const threshold = protection.actionFlood?.threshold || 3;
+
+  const timestamps = (actionHistory.get(key) || []).filter(t => now - t < windowMs);
+  timestamps.push(now);
+  actionHistory.set(key, timestamps);
+
+  return timestamps.length >= threshold;
+}
 
 async function notifyMember(member, reason) {
   await member
@@ -66,8 +92,19 @@ async function logAlert(guild, protection, actionLabel, member, resultat) {
     )
     .setColor(0xe74c3c)
     .setTimestamp();
-  // Le "content" ping réellement la personne, contrairement à un simple champ d'embed
   await channel.send({ content: `${member}`, embeds: [embed] }).catch(() => {});
+}
+
+/**
+ * Applique la sanction en tenant compte d'une éventuelle escalade automatique
+ * (rafale d'actions sensibles en peu de temps = comportement de nuke bot avéré).
+ */
+async function punishWithFloodCheck(guild, member, protection, label) {
+  const isFlood = recordActionAndCheckFlood(guild, member.id, protection);
+  const punishment = isFlood ? 'ban' : protection.punishment;
+  const finalLabel = isFlood ? `${label} — ESCALADE AUTOMATIQUE (rafale d'actions détectée)` : label;
+  const resultat = await punishAndNotify(guild, member, punishment, finalLabel);
+  return { resultat, finalLabel };
 }
 
 async function handleDangerousRoleAssign(entry, guild, protection, executorId) {
@@ -87,8 +124,8 @@ async function handleDangerousRoleAssign(entry, guild, protection, executorId) {
   if (!member) return;
 
   const label = `Attribution d'un rôle sensible (${dangerous.map(r => r.name).join(', ')}) à ${target || entry.targetId}`;
-  const resultat = await punishAndNotify(guild, member, protection.punishment, label);
-  await logAlert(guild, protection, label, member, resultat);
+  const { resultat, finalLabel } = await punishWithFloodCheck(guild, member, protection, label);
+  await logAlert(guild, protection, finalLabel, member, resultat);
 }
 
 async function handleGuildUpdate(entry, guild, protection, executorId) {
@@ -111,21 +148,83 @@ async function handleGuildUpdate(entry, guild, protection, executorId) {
   if (!member) return;
 
   const label = `Modification du serveur (${changes.map(c => c.key).join(', ')})${revertNote}`;
-  const resultat = await punishAndNotify(guild, member, protection.punishment, label);
-  await logAlert(guild, protection, label, member, resultat);
+  const { resultat, finalLabel } = await punishWithFloodCheck(guild, member, protection, label);
+  await logAlert(guild, protection, finalLabel, member, resultat);
 }
 
 /**
- * Filet de sécurité : détecte toute apparition d'un rôle sensible sur un membre,
- * même quand elle n'est pas passée par le chemin normal (ex: auto-attribution via
- * un menu de rôles Discord natif, qui ne génère pas toujours d'entrée de journal
- * d'audit). Laisse d'abord une marge à guildAuditLogEntryCreate pour traiter le cas.
+ * Détecte une élévation de permissions sur un rôle EXISTANT (ex: ajout de la
+ * permission Administrateur) sans passer par une suppression/création de rôle.
+ * Restaure les anciennes permissions et sanctionne l'auteur.
  */
+async function handleRoleUpdate(entry, guild, protection, executorId) {
+  const permChange = (entry.changes || []).find(c => c.key === 'permissions');
+  if (!permChange) return;
+
+  const oldPerms = new PermissionsBitField(BigInt(permChange.old || 0));
+  const newPerms = new PermissionsBitField(BigInt(permChange.new || 0));
+  const gained = newPerms.remove(oldPerms); // permissions présentes dans new mais pas dans old
+  const dangerousGained = ['Administrator', 'BanMembers', 'KickMembers', 'ManageGuild', 'ManageRoles', 'ManageChannels', 'ManageWebhooks'].filter(
+    p => gained.has(p)
+  );
+  if (!dangerousGained.length) return;
+
+  const role = await guild.roles.fetch(entry.targetId).catch(() => null);
+  if (role) {
+    await role.setPermissions(BigInt(permChange.old || 0)).catch(() => {});
+  }
+
+  const member = await guild.members.fetch(executorId).catch(() => null);
+  if (!member) return;
+
+  const label = `Élévation de permissions sur le rôle "${role ? role.name : entry.targetId}" (${dangerousGained.join(', ')}) — permissions restaurées`;
+  const { resultat, finalLabel } = await punishWithFloodCheck(guild, member, protection, label);
+  await logAlert(guild, protection, finalLabel, member, resultat);
+}
+
+/**
+ * Détecte l'ouverture de permissions sur un salon pour @everyone (ex: rendre
+ * un salon privé visible/écrivable par tout le monde) — classique de nuke.
+ */
+async function handleChannelUpdate(entry, guild, protection, executorId) {
+  const overwriteChange = (entry.changes || []).find(c => c.key === 'permission_overwrites');
+  if (!overwriteChange) return;
+
+  const oldOverwrites = overwriteChange.old || [];
+  const newOverwrites = overwriteChange.new || [];
+  const everyoneOld = oldOverwrites.find(o => o.id === guild.id);
+  const everyoneNew = newOverwrites.find(o => o.id === guild.id);
+  if (!everyoneNew) return;
+
+  const oldDeny = BigInt(everyoneOld?.deny || 0);
+  const newDeny = BigInt(everyoneNew?.deny || 0);
+  const viewChannelBit = PermissionsBitField.Flags.ViewChannel;
+  const wasHidden = (oldDeny & viewChannelBit) === viewChannelBit;
+  const isStillHidden = (newDeny & viewChannelBit) === viewChannelBit;
+
+  if (!wasHidden || isStillHidden) return; // pas un cas d'ouverture d'un salon caché
+
+  const channel = await guild.channels.fetch(entry.targetId).catch(() => null);
+  if (channel && everyoneOld) {
+    await channel.permissionOverwrites.edit(guild.id, {}, { reason: 'Restauration après protection anti-nuke' }).catch(() => {});
+    await channel.permissionOverwrites
+      .create(guild.id, { ViewChannel: false })
+      .catch(() => {});
+  }
+
+  const member = await guild.members.fetch(executorId).catch(() => null);
+  if (!member) return;
+
+  const label = `Salon "${channel ? channel.name : entry.targetId}" rendu visible par @everyone — refermé automatiquement`;
+  const { resultat, finalLabel } = await punishWithFloodCheck(guild, member, protection, label);
+  await logAlert(guild, protection, finalLabel, member, resultat);
+}
+
 async function handleMemberUpdate(oldMember, newMember) {
   const data = load(newMember.guild.id);
   const protection = data.config.protection;
   if (!protection.enabled || !protection.dangerousRoles.length) return;
-  if (protection.whitelist.includes(newMember.id)) return;
+  if (await isExempt(newMember.guild, newMember.id, protection)) return;
   if (newMember.id === newMember.guild.ownerId) return;
 
   const addedDangerous = newMember.roles.cache.filter(
@@ -138,21 +237,13 @@ async function handleMemberUpdate(oldMember, newMember) {
   const fresh = await newMember.fetch().catch(() => null);
   if (!fresh) return;
   const stillHas = addedDangerous.filter(r => fresh.roles.cache.has(r.id));
-  if (!stillHas.size) return; // déjà traité par le chemin normal (journal d'audit)
+  if (!stillHas.size) return;
 
-  // Vérifie s'il existe une entrée de journal d'audit récente attribuant ce
-  // changement à quelqu'un de whitelist — dans ce cas, l'attribution est
-  // légitime (ex: un admin whitelist donne ce rôle à un membre normal) et
-  // il ne faut surtout pas sanctionner le membre qui le reçoit.
-  const auditLogs = await newMember.guild
-    .fetchAuditLogs({ type: AuditLogEvent.MemberRoleUpdate, limit: 5 })
-    .catch(() => null);
+  const auditLogs = await newMember.guild.fetchAuditLogs({ type: AuditLogEvent.MemberRoleUpdate, limit: 5 }).catch(() => null);
   if (auditLogs) {
-    const recentEntry = auditLogs.entries.find(
-      e => e.targetId === newMember.id && Date.now() - e.createdTimestamp < 10000
-    );
-    if (recentEntry && recentEntry.executorId && protection.whitelist.includes(recentEntry.executorId)) {
-      return; // attribution légitime par quelqu'un de whitelist, on ne touche à rien
+    const recentEntry = auditLogs.entries.find(e => e.targetId === newMember.id && Date.now() - e.createdTimestamp < 10000);
+    if (recentEntry && recentEntry.executorId && (await isExempt(newMember.guild, recentEntry.executorId, protection))) {
+      return; // attribution légitime par quelqu'un d'exempté
     }
   }
 
@@ -160,6 +251,24 @@ async function handleMemberUpdate(oldMember, newMember) {
   const label = `Possession non autorisée d'un rôle sensible (${stillHas.map(r => r.name).join(', ')})`;
   const resultat = await punishAndNotify(fresh.guild, fresh, protection.punishment, label);
   await logAlert(fresh.guild, protection, label, fresh, resultat);
+}
+
+/**
+ * Un bot ajouté par quelqu'un de non whitelist est expulsé immédiatement,
+ * en plus de sanctionner la personne qui l'a invité.
+ */
+async function handleBotAdd(entry, guild, protection, executorId) {
+  const botMember = await guild.members.fetch(entry.targetId).catch(() => null);
+  if (botMember) {
+    await botMember.kick('Protection anti-nuke : bot ajouté par une personne non whitelist').catch(() => {});
+  }
+
+  const member = await guild.members.fetch(executorId).catch(() => null);
+  if (!member) return;
+
+  const label = `Ajout du bot ${botMember ? botMember.user.tag : entry.targetId} — bot expulsé automatiquement`;
+  const { resultat, finalLabel } = await punishWithFloodCheck(guild, member, protection, label);
+  await logAlert(guild, protection, finalLabel, member, resultat);
 }
 
 async function handleAuditLogEntry(entry, guild) {
@@ -170,13 +279,22 @@ async function handleAuditLogEntry(entry, guild) {
   const executorId = entry.executorId;
   if (!executorId) return;
   if (executorId === guild.client.user.id) return;
-  if (protection.whitelist.includes(executorId)) return;
+  if (await isExempt(guild, executorId, protection)) return;
 
   if (entry.action === AuditLogEvent.MemberRoleUpdate) {
     return handleDangerousRoleAssign(entry, guild, protection, executorId);
   }
   if (entry.action === AuditLogEvent.GuildUpdate) {
     return handleGuildUpdate(entry, guild, protection, executorId);
+  }
+  if (entry.action === AuditLogEvent.RoleUpdate) {
+    return handleRoleUpdate(entry, guild, protection, executorId);
+  }
+  if (entry.action === AuditLogEvent.ChannelUpdate) {
+    return handleChannelUpdate(entry, guild, protection, executorId);
+  }
+  if (entry.action === AuditLogEvent.BotAdd) {
+    return handleBotAdd(entry, guild, protection, executorId);
   }
 
   if (!WATCHED_ACTIONS.has(entry.action)) return;
@@ -185,8 +303,8 @@ async function handleAuditLogEntry(entry, guild) {
   if (!member) return;
 
   const label = ACTION_LABELS[entry.action] || String(entry.action);
-  const resultat = await punishAndNotify(guild, member, protection.punishment, label);
-  await logAlert(guild, protection, label, member, resultat);
+  const { resultat, finalLabel } = await punishWithFloodCheck(guild, member, protection, label);
+  await logAlert(guild, protection, finalLabel, member, resultat);
 }
 
-module.exports = { handleAuditLogEntry, handleMemberUpdate, punish, punishAndNotify, logAlert, notifyMember };
+module.exports = { handleAuditLogEntry, handleMemberUpdate, punish, punishAndNotify, logAlert, notifyMember, isExempt };

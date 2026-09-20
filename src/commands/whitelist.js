@@ -5,7 +5,7 @@ const { load, save } = require('../storage');
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('whitelist')
-    .setDescription("Gérer la liste blanche de la protection anti-nuke")
+    .setDescription('Gérer la liste blanche de la protection anti-nuke (par personne ou par rôle)')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addSubcommand(sc =>
       sc
@@ -19,10 +19,23 @@ module.exports = {
         .setDescription('Retirer un membre de la liste blanche')
         .addUserOption(o => o.setName('membre').setDescription('Membre à retirer').setRequired(true))
     )
-    .addSubcommand(sc => sc.setName('voir').setDescription('Voir la liste blanche actuelle')),
+    .addSubcommand(sc =>
+      sc
+        .setName('role-ajouter')
+        .setDescription('Autoriser tout le monde ayant ce rôle à effectuer des actions sensibles')
+        .addRoleOption(o => o.setName('role').setDescription('Rôle à whitelist').setRequired(true))
+    )
+    .addSubcommand(sc =>
+      sc
+        .setName('role-retirer')
+        .setDescription('Retirer un rôle de la liste blanche')
+        .addRoleOption(o => o.setName('role').setDescription('Rôle à retirer').setRequired(true))
+    )
+    .addSubcommand(sc => sc.setName('voir').setDescription('Voir la liste blanche actuelle (personnes et rôles)')),
   async execute(interaction) {
-    if (!(await isStaff(interaction))) return interaction.reply({ content: "⛔ Tu n'as pas le rôle requis pour utiliser cette commande.", ephemeral: true });
-
+    if (!(await isStaff(interaction))) {
+      return interaction.reply({ content: "⛔ Tu n'as pas le rôle requis pour utiliser cette commande.", ephemeral: true });
+    }
     const data = load(interaction.guild.id);
     const sub = interaction.options.getSubcommand();
 
@@ -42,10 +55,33 @@ module.exports = {
       return interaction.reply({ content: `✅ ${membre} a été retiré de la liste blanche.`, ephemeral: true });
     }
 
+    if (sub === 'role-ajouter') {
+      const role = interaction.options.getRole('role');
+      if (!data.config.protection.whitelistRoles.includes(role.id)) {
+        data.config.protection.whitelistRoles.push(role.id);
+        save(interaction.guild.id, data);
+      }
+      return interaction.reply({
+        content: `✅ Toute personne ayant ${role} est maintenant whitelist automatiquement.`,
+        ephemeral: true
+      });
+    }
+
+    if (sub === 'role-retirer') {
+      const role = interaction.options.getRole('role');
+      data.config.protection.whitelistRoles = data.config.protection.whitelistRoles.filter(id => id !== role.id);
+      save(interaction.guild.id, data);
+      return interaction.reply({ content: `✅ ${role} a été retiré de la liste blanche.`, ephemeral: true });
+    }
+
     if (sub === 'voir') {
-      const list = data.config.protection.whitelist;
-      if (!list.length) return interaction.reply({ content: 'La liste blanche est vide.', ephemeral: true });
-      return interaction.reply({ content: list.map(id => `<@${id}>`).join('\n'), ephemeral: true });
+      const people = data.config.protection.whitelist;
+      const roles = data.config.protection.whitelistRoles;
+      if (!people.length && !roles.length) return interaction.reply({ content: 'La liste blanche est vide.', ephemeral: true });
+      const parts = [];
+      if (people.length) parts.push('**Personnes :**\n' + people.map(id => `<@${id}>`).join('\n'));
+      if (roles.length) parts.push('**Rôles :**\n' + roles.map(id => `<@&${id}>`).join('\n'));
+      return interaction.reply({ content: parts.join('\n\n'), ephemeral: true });
     }
   }
 };
