@@ -23,6 +23,10 @@ module.exports = {
       return interaction.reply({ content: `${target} est déjà en jail.`, ephemeral: true });
     }
 
+    // On accuse réception tout de suite : les actions ci-dessous (rôles, MP, log)
+    // peuvent prendre plus de 3 secondes et feraient sinon expirer l'interaction.
+    await interaction.deferReply();
+
     const raison = interaction.options.getString('raison');
     const currentRoles = target.roles.cache.filter(r => r.id !== interaction.guild.id).map(r => r.id);
 
@@ -49,6 +53,6 @@ module.exports = {
       if (logChannel) await logChannel.send({ content: `${target}`, embeds: [embed] }).catch(() => {});
     }
 
-    await interaction.reply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [embed] });
   }
 };

@@ -19,7 +19,8 @@ module.exports = {
     const jailInfo = data.jails[target.id];
     if (!jailInfo) return interaction.reply({ content: `${target} n'est pas en jail.`, ephemeral: true });
 
-    // Ne restaure que les rôles qui existent encore
+    await interaction.deferReply();
+
     const rolesToRestore = jailInfo.removedRoles.filter(id => interaction.guild.roles.cache.has(id));
     await target.roles.set(rolesToRestore).catch(() => {});
     if (data.config.jail.role) await target.roles.remove(data.config.jail.role).catch(() => {});
@@ -35,6 +36,6 @@ module.exports = {
       .setColor(0x2ecc71)
       .setTimestamp();
 
-    await interaction.reply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [embed] });
   }
 };

@@ -79,9 +79,11 @@ async function handleMultiReasonSubmit(interaction, token, typeIndex) {
     return interaction.reply({ content: '⚠️ Cette sélection a expiré, relance `/sanction`.', ephemeral: true });
   }
 
+  await interaction.deferReply({ ephemeral: true });
+
   const data = load(interaction.guild.id);
   const type = data.config.sanction.types[Number(typeIndex)];
-  if (!type) return interaction.reply({ content: 'Type de sanction introuvable.', ephemeral: true });
+  if (!type) return interaction.editReply({ content: 'Type de sanction introuvable.' });
 
   const reason = interaction.fields.getTextInputValue('raison');
   const sanctioned = [];
@@ -114,7 +116,7 @@ async function handleMultiReasonSubmit(interaction, token, typeIndex) {
   }
 
   const failedNote = failed.length ? ` (${failed.length} introuvable(s), ignoré(s))` : '';
-  await interaction.reply({ content: `✅ Sanction appliquée à ${sanctioned.length} membre(s).${failedNote}`, ephemeral: true });
+  await interaction.editReply({ content: `✅ Sanction appliquée à ${sanctioned.length} membre(s).${failedNote}` });
 }
 
 module.exports = { handleMultiUserSelect, handleMultiTypeSelect, handleMultiReasonSubmit };

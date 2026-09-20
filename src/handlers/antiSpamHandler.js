@@ -1,4 +1,5 @@
 const { EmbedBuilder } = require('discord.js');
+const { recordMuteAndCheckEscalation } = require('./escalationHandler');
 
 const messageTimestamps = new Map(); // clé "guildId:userId" -> [timestamps]
 
@@ -9,6 +10,7 @@ async function timeoutForSpam(member, reason) {
     await member
       .send(`🛡️ Tu as été mis en sourdine 10 minutes sur **${member.guild.name}** (anti-spam).\nRaison : ${reason}`)
       .catch(() => {});
+    await recordMuteAndCheckEscalation(member, reason).catch(() => {});
     return 'mis en sourdine 10 minutes';
   } catch (err) {
     return `échec de la sanction (${err.message})`;

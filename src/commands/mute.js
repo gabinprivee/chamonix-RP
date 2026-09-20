@@ -1,5 +1,6 @@
 const { isStaff } = require('../permissions');
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { recordMuteAndCheckEscalation } = require('../handlers/escalationHandler');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -18,13 +19,22 @@ module.exports = {
     const minutes = interaction.options.getInteger('minutes');
     const raison = interaction.options.getString('raison') || 'Non précisée';
 
+    await interaction.deferReply();
+
+    if (target.permissions.has('Administrator')) {
+      return interaction.editReply({
+        content: `⚠️ ${target} a la permission Administrateur : Discord ne permet pas de mute un administrateur, quel que soit le bot utilisé. Retire-lui d'abord ce rôle, ou utilise \`/jail\`.`
+      });
+    }
+
     try {
       await target.timeout(minutes * 60 * 1000, raison);
     } catch (err) {
-      return interaction.reply({ content: `❌ Impossible de mute ce membre (${err.message}).`, ephemeral: true });
+      return interaction.editReply({ content: `❌ Impossible de mute ce membre (${err.message}).` });
     }
 
     await target.send(`🔇 Tu as été mis en sourdine ${minutes} minute(s) sur **${interaction.guild.name}**.\nRaison : ${raison}`).catch(() => {});
-    await interaction.reply({ content: `✅ ${target} mis en sourdine pour ${minutes} minute(s). Raison : ${raison}` });
+    await recordMuteAndCheckEscalation(target, raison).catch(() => {});
+    await interaction.editReply({ content: `✅ ${target} mis en sourdine pour ${minutes} minute(s). Raison : ${raison}` });
   }
 };

@@ -32,7 +32,8 @@ function defaultData() {
         logChannel: null,
         punishment: 'strip_roles',
         dangerousRoles: [],
-        antiSpam: { maxMentions: 6, maxMessages: 6, intervalSeconds: 6 }
+        antiSpam: { maxMentions: 6, maxMessages: 6, intervalSeconds: 6 },
+        escalationThreshold: 3
       },
       backup: { channelId: null },
       welcome: { channelId: null, joinMessage: null, leaveMessage: null },
@@ -42,7 +43,8 @@ function defaultData() {
     absences: {},
     service: {},
     identities: {},
-    jails: {}
+    jails: {},
+    muteHistory: {}
   };
 }
 
@@ -83,6 +85,7 @@ function load(guildId) {
   if (!data.service) data.service = {};
   if (!data.identities) data.identities = {};
   if (!data.jails) data.jails = {};
+  if (!data.muteHistory) data.muteHistory = {};
   return data;
 }
 

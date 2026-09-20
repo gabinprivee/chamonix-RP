@@ -21,7 +21,14 @@ module.exports = {
           { name: 'Bannir', value: 'ban' }
         )
     )
-    .addBooleanOption(o => o.setName('active').setDescription('Activer ou désactiver la protection').setRequired(true)),
+    .addBooleanOption(o => o.setName('active').setDescription('Activer ou désactiver la protection').setRequired(true))
+    .addIntegerOption(o =>
+      o
+        .setName('seuil_mutes_par_jour')
+        .setDescription("Nombre de mutes dans la même journée avant d'appliquer cette sanction automatiquement (par défaut : 3)")
+        .setMinValue(1)
+        .setRequired(false)
+    ),
   async execute(interaction) {
     if (!(await isStaff(interaction))) return interaction.reply({ content: "⛔ Tu n'as pas le rôle requis pour utiliser cette commande.", ephemeral: true });
 
@@ -29,9 +36,11 @@ module.exports = {
     data.config.protection.logChannel = interaction.options.getChannel('salon_log').id;
     data.config.protection.punishment = interaction.options.getString('action');
     data.config.protection.enabled = interaction.options.getBoolean('active');
+    const seuil = interaction.options.getInteger('seuil_mutes_par_jour');
+    if (seuil) data.config.protection.escalationThreshold = seuil;
     save(interaction.guild.id, data);
     await interaction.reply({
-      content: `✅ Protection ${data.config.protection.enabled ? 'activée' : 'désactivée'}. Utilise \`/whitelist ajouter\` pour autoriser les personnes de confiance à effectuer des actions sensibles.`,
+      content: `✅ Protection ${data.config.protection.enabled ? 'activée' : 'désactivée'}. Après ${data.config.protection.escalationThreshold} mise(s) en sourdine dans la même journée, un membre recevra automatiquement cette sanction. Utilise \`/whitelist ajouter\` pour autoriser les personnes de confiance à effectuer des actions sensibles.`,
       ephemeral: true
     });
   }
