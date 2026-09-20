@@ -107,23 +107,24 @@ async function punishWithFloodCheck(guild, member, protection, label) {
   return { resultat, finalLabel };
 }
 
-async function handleDangerousRoleAssign(entry, guild, protection, executorId) {
-  if (!protection.dangerousRoles.length) return;
-
+/**
+ * Toute attribution de rôle (n'importe lequel) par quelqu'un de non whitelist
+ * est annulée et sanctionnée — pas seulement les rôles marqués "sensibles".
+ */
+async function handleRoleAssign(entry, guild, protection, executorId) {
   const addChange = entry.changes?.find(c => c.key === '$add');
   const addedRoles = addChange?.new || [];
-  const dangerous = addedRoles.filter(r => protection.dangerousRoles.includes(r.id));
-  if (!dangerous.length) return;
+  if (!addedRoles.length) return;
 
   const target = await guild.members.fetch(entry.targetId).catch(() => null);
   if (target) {
-    await target.roles.remove(dangerous.map(r => r.id)).catch(() => {});
+    await target.roles.remove(addedRoles.map(r => r.id)).catch(() => {});
   }
 
   const member = await guild.members.fetch(executorId).catch(() => null);
   if (!member) return;
 
-  const label = `Attribution d'un rôle sensible (${dangerous.map(r => r.name).join(', ')}) à ${target || entry.targetId}`;
+  const label = `Attribution non autorisée de rôle(s) (${addedRoles.map(r => r.name).join(', ')}) à ${target || entry.targetId}`;
   const { resultat, finalLabel } = await punishWithFloodCheck(guild, member, protection, label);
   await logAlert(guild, protection, finalLabel, member, resultat);
 }
@@ -223,32 +224,31 @@ async function handleChannelUpdate(entry, guild, protection, executorId) {
 async function handleMemberUpdate(oldMember, newMember) {
   const data = load(newMember.guild.id);
   const protection = data.config.protection;
-  if (!protection.enabled || !protection.dangerousRoles.length) return;
+  if (!protection.enabled) return;
   if (await isExempt(newMember.guild, newMember.id, protection)) return;
   if (newMember.id === newMember.guild.ownerId) return;
 
-  const addedDangerous = newMember.roles.cache.filter(
-    r => !oldMember.roles.cache.has(r.id) && protection.dangerousRoles.includes(r.id)
-  );
-  if (!addedDangerous.size) return;
+  const addedRoles = newMember.roles.cache.filter(r => !oldMember.roles.cache.has(r.id));
+  if (!addedRoles.size) return;
 
   await new Promise(res => setTimeout(res, 2000));
 
   const fresh = await newMember.fetch().catch(() => null);
   if (!fresh) return;
-  const stillHas = addedDangerous.filter(r => fresh.roles.cache.has(r.id));
+  const stillHas = addedRoles.filter(r => fresh.roles.cache.has(r.id));
   if (!stillHas.size) return;
 
   const auditLogs = await newMember.guild.fetchAuditLogs({ type: AuditLogEvent.MemberRoleUpdate, limit: 5 }).catch(() => null);
   if (auditLogs) {
     const recentEntry = auditLogs.entries.find(e => e.targetId === newMember.id && Date.now() - e.createdTimestamp < 10000);
-    if (recentEntry && recentEntry.executorId && (await isExempt(newMember.guild, recentEntry.executorId, protection))) {
-      return; // attribution légitime par quelqu'un d'exempté
+    if (recentEntry && recentEntry.executorId) {
+      if (recentEntry.executorId === newMember.guild.client.user.id) return; // attribué par le bot lui-même (rankup, sanction, captcha, absence...)
+      if (await isExempt(newMember.guild, recentEntry.executorId, protection)) return; // attribution légitime par quelqu'un d'exempté
     }
   }
 
   await fresh.roles.remove(stillHas.map(r => r.id)).catch(() => {});
-  const label = `Possession non autorisée d'un rôle sensible (${stillHas.map(r => r.name).join(', ')})`;
+  const label = `Attribution non autorisée de rôle(s) (${stillHas.map(r => r.name).join(', ')})`;
   const resultat = await punishAndNotify(fresh.guild, fresh, protection.punishment, label);
   await logAlert(fresh.guild, protection, label, fresh, resultat);
 }
@@ -282,7 +282,7 @@ async function handleAuditLogEntry(entry, guild) {
   if (await isExempt(guild, executorId, protection)) return;
 
   if (entry.action === AuditLogEvent.MemberRoleUpdate) {
-    return handleDangerousRoleAssign(entry, guild, protection, executorId);
+    return handleRoleAssign(entry, guild, protection, executorId);
   }
   if (entry.action === AuditLogEvent.GuildUpdate) {
     return handleGuildUpdate(entry, guild, protection, executorId);
