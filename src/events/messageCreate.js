@@ -1,5 +1,6 @@
 const { load, save } = require('../storage');
 const { checkSpam } = require('../handlers/antiSpamHandler');
+const { assignIfStaffReply } = require('../handlers/ticketHandler');
 
 function extractField(content, label) {
   const regex = new RegExp(`\\*\\*${label}\\*\\*\\s*:?\\s*(.+)`, 'i');
@@ -17,6 +18,9 @@ module.exports = {
     // Anti-spam / anti-mention de masse (avant tout le reste)
     const wasSpam = await checkSpam(message, data.config.protection).catch(() => false);
     if (wasSpam) return;
+
+    // Assignation automatique des tickets au premier message d'un membre du support
+    await assignIfStaffReply(message).catch(() => {});
 
     const identityChannel = data.config.identity.channelId;
     if (!identityChannel || message.channel.id !== identityChannel) return;

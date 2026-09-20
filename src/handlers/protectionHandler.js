@@ -140,6 +140,22 @@ async function handleMemberUpdate(oldMember, newMember) {
   const stillHas = addedDangerous.filter(r => fresh.roles.cache.has(r.id));
   if (!stillHas.size) return; // déjà traité par le chemin normal (journal d'audit)
 
+  // Vérifie s'il existe une entrée de journal d'audit récente attribuant ce
+  // changement à quelqu'un de whitelist — dans ce cas, l'attribution est
+  // légitime (ex: un admin whitelist donne ce rôle à un membre normal) et
+  // il ne faut surtout pas sanctionner le membre qui le reçoit.
+  const auditLogs = await newMember.guild
+    .fetchAuditLogs({ type: AuditLogEvent.MemberRoleUpdate, limit: 5 })
+    .catch(() => null);
+  if (auditLogs) {
+    const recentEntry = auditLogs.entries.find(
+      e => e.targetId === newMember.id && Date.now() - e.createdTimestamp < 10000
+    );
+    if (recentEntry && recentEntry.executorId && protection.whitelist.includes(recentEntry.executorId)) {
+      return; // attribution légitime par quelqu'un de whitelist, on ne touche à rien
+    }
+  }
+
   await fresh.roles.remove(stillHas.map(r => r.id)).catch(() => {});
   const label = `Possession non autorisée d'un rôle sensible (${stillHas.map(r => r.name).join(', ')})`;
   const resultat = await punishAndNotify(fresh.guild, fresh, protection.punishment, label);

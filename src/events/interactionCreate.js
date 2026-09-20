@@ -5,6 +5,7 @@ const avis = require('../handlers/avisHandler');
 const annonce = require('../handlers/annonceHandler');
 const captcha = require('../handlers/captchaHandler');
 const rankupPanel = require('../handlers/rankupPanelHandler');
+const ticket = require('../handlers/ticketHandler');
 
 module.exports = {
   name: 'interactionCreate',
@@ -48,6 +49,8 @@ module.exports = {
         if (id === 'rankup_panel_close') return rankupPanel.handleCloseButton(interaction);
         if (id === 'rankup_panel_msg_up') return rankupPanel.handleMessageButton(interaction, 'up');
         if (id === 'rankup_panel_msg_down') return rankupPanel.handleMessageButton(interaction, 'down');
+
+        if (id === 'ticket_close') return ticket.closeTicket(interaction);
         return;
       }
 
@@ -58,6 +61,7 @@ module.exports = {
           return sanction.handleMultiTypeSelect(interaction, token);
         }
         if (id === 'rankup_panel_remove_select') return rankupPanel.handleRemoveSelect(interaction);
+        if (id === 'ticket_category_select') return ticket.openTicket(interaction);
         return;
       }
 

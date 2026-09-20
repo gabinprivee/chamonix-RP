@@ -3,6 +3,7 @@ const path = require('path');
 const { load, save } = require('./storage');
 const { buildDashboardEmbed } = require('./handlers/serviceDashboard');
 const { performBackup } = require('./handlers/backupHandler');
+const { checkReminders } = require('./handlers/ticketHandler');
 
 function parseDate(str) {
   const [d, m, y] = str.split('/').map(Number);
@@ -70,6 +71,20 @@ async function runScheduledBackups(client) {
   }
 }
 
+async function runTicketReminders(client) {
+  const dataDir = path.join(__dirname, '..', 'data');
+  if (!fs.existsSync(dataDir)) return;
+  for (const file of fs.readdirSync(dataDir)) {
+    if (!file.endsWith('.json')) continue;
+    const guildId = file.replace('.json', '');
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) continue;
+    const data = load(guildId);
+    if (!Object.keys(data.tickets).length) continue;
+    await checkReminders(guild, data).catch(() => {});
+  }
+}
+
 function startScheduler(client) {
   checkAbsences(client);
   setInterval(() => checkAbsences(client), 60 * 60 * 1000);
@@ -78,6 +93,8 @@ function startScheduler(client) {
   setInterval(() => updateServiceDashboards(client), 20 * 1000);
 
   setInterval(() => runScheduledBackups(client), 6 * 60 * 60 * 1000);
+
+  setInterval(() => runTicketReminders(client), 60 * 60 * 1000);
 }
 
 module.exports = { startScheduler };

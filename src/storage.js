@@ -38,13 +38,23 @@ function defaultData() {
       backup: { channelId: null },
       welcome: { channelId: null, joinMessage: null, leaveMessage: null },
       captcha: { enabled: false, channelId: null, verifiedRole: null, unverifiedRole: null },
-      jail: { role: null, logChannel: null }
+      jail: { role: null, logChannel: null },
+      tickets: {
+        panelChannelId: null,
+        ticketCategoryId: null,
+        supportRole: null,
+        logChannel: null,
+        reminderHours: 24,
+        categories: [],
+        counter: 0
+      }
     },
     absences: {},
     service: {},
     identities: {},
     jails: {},
-    muteHistory: {}
+    muteHistory: {},
+    tickets: {}
   };
 }
 
@@ -86,6 +96,7 @@ function load(guildId) {
   if (!data.identities) data.identities = {};
   if (!data.jails) data.jails = {};
   if (!data.muteHistory) data.muteHistory = {};
+  if (!data.tickets) data.tickets = {};
   return data;
 }
 
