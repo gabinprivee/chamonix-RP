@@ -12,11 +12,11 @@ module.exports = {
     .addBooleanOption(o =>
       o.setName('expulser_comptes_recents').setDescription('Expulser automatiquement les comptes très récents pendant un raid').setRequired(true)
     )
-    .addIntegerOption(o =>
-      o.setName('age_min_jours').setDescription("Âge minimum du compte en jours (si l'option ci-dessus est activée)").setMinValue(1).setRequired(false)
-    )
     .addBooleanOption(o =>
       o.setName('verrouillage_temporaire').setDescription('Élever temporairement la vérification du serveur pendant un raid').setRequired(true)
+    )
+    .addIntegerOption(o =>
+      o.setName('age_min_jours').setDescription("Âge minimum du compte en jours (si l'option ci-dessus est activée)").setMinValue(1).setRequired(false)
     )
     .addIntegerOption(o =>
       o.setName('duree_verrouillage_minutes').setDescription('Durée du verrouillage en minutes (défaut : 10)').setMinValue(1).setRequired(false)

@@ -113,7 +113,14 @@ async function punishWithFloodCheck(guild, member, protection, label) {
  */
 async function handleRoleAssign(entry, guild, protection, executorId) {
   const addChange = entry.changes?.find(c => c.key === '$add');
-  const addedRoles = addChange?.new || [];
+  const allAddedRoles = addChange?.new || [];
+  if (!allAddedRoles.length) return;
+
+  const isSelfAssign = entry.targetId === executorId;
+  // Auto-attribution (onboarding Discord, sélection de rôle par soi-même) : normal,
+  // on ne bloque que si le rôle est explicitement marqué "sensible".
+  // Attribution à quelqu'un d'autre : toujours bloquée si l'auteur n'est pas whitelist.
+  const addedRoles = isSelfAssign ? allAddedRoles.filter(r => protection.dangerousRoles.includes(r.id)) : allAddedRoles;
   if (!addedRoles.length) return;
 
   const target = await guild.members.fetch(entry.targetId).catch(() => null);
@@ -239,16 +246,27 @@ async function handleMemberUpdate(oldMember, newMember) {
   if (!stillHas.size) return;
 
   const auditLogs = await newMember.guild.fetchAuditLogs({ type: AuditLogEvent.MemberRoleUpdate, limit: 5 }).catch(() => null);
+  let effectiveStillHas = stillHas;
   if (auditLogs) {
     const recentEntry = auditLogs.entries.find(e => e.targetId === newMember.id && Date.now() - e.createdTimestamp < 10000);
     if (recentEntry && recentEntry.executorId) {
       if (recentEntry.executorId === newMember.guild.client.user.id) return; // attribué par le bot lui-même (rankup, sanction, captcha, absence...)
       if (await isExempt(newMember.guild, recentEntry.executorId, protection)) return; // attribution légitime par quelqu'un d'exempté
+      if (recentEntry.executorId === newMember.id) {
+        // Auto-attribution (onboarding, choix de rôle par le membre) : normal,
+        // sauf si le rôle est explicitement marqué "sensible".
+        effectiveStillHas = stillHas.filter(r => protection.dangerousRoles.includes(r.id));
+      }
+    } else {
+      // Aucune entrée trouvée : origine incertaine (souvent aussi de l'onboarding),
+      // on reste prudent et ne bloque que les rôles marqués "sensibles".
+      effectiveStillHas = stillHas.filter(r => protection.dangerousRoles.includes(r.id));
     }
   }
+  if (!effectiveStillHas.size) return;
 
-  await fresh.roles.remove(stillHas.map(r => r.id)).catch(() => {});
-  const label = `Attribution non autorisée de rôle(s) (${stillHas.map(r => r.name).join(', ')})`;
+  await fresh.roles.remove(effectiveStillHas.map(r => r.id)).catch(() => {});
+  const label = `Attribution non autorisée de rôle(s) (${effectiveStillHas.map(r => r.name).join(', ')})`;
   const resultat = await punishAndNotify(fresh.guild, fresh, protection.punishment, label);
   await logAlert(fresh.guild, protection, label, fresh, resultat);
 }
@@ -258,15 +276,49 @@ async function handleMemberUpdate(oldMember, newMember) {
  * en plus de sanctionner la personne qui l'a invité.
  */
 async function handleBotAdd(entry, guild, protection, executorId) {
-  const botMember = await guild.members.fetch(entry.targetId).catch(() => null);
+  const botMember = await guild.members.fetch(entry.targetId).catch(err => {
+    console.error('Protection anti-nuke : impossible de récupérer le bot ajouté :', err.message);
+    return null;
+  });
   if (botMember) {
-    await botMember.kick('Protection anti-nuke : bot ajouté par une personne non whitelist').catch(() => {});
+    await botMember
+      .kick('Protection anti-nuke : bot ajouté par une personne non whitelist')
+      .catch(err => console.error('Protection anti-nuke : impossible d\'expulser le bot ajouté (vérifie que le rôle du bot est au-dessus) :', err.message));
+  } else {
+    console.error(`Protection anti-nuke : bot ajouté (id ${entry.targetId}) introuvable, expulsion impossible.`);
   }
 
   const member = await guild.members.fetch(executorId).catch(() => null);
   if (!member) return;
 
   const label = `Ajout du bot ${botMember ? botMember.user.tag : entry.targetId} — bot expulsé automatiquement`;
+  const { resultat, finalLabel } = await punishWithFloodCheck(guild, member, protection, label);
+  await logAlert(guild, protection, finalLabel, member, resultat);
+}
+
+/**
+ * Une invitation créée sans expiration ET sans limite d'utilisation par
+ * quelqu'un de non whitelist est classiquement utilisée pour revenir raider
+ * un serveur après coup, même après un ban de masse. On la supprime aussitôt.
+ */
+async function handleInviteCreate(entry, guild, protection, executorId) {
+  const maxAgeChange = (entry.changes || []).find(c => c.key === 'max_age');
+  const maxUsesChange = (entry.changes || []).find(c => c.key === 'max_uses');
+  const maxAge = maxAgeChange ? maxAgeChange.new : entry.extra?.maxAge;
+  const maxUses = maxUsesChange ? maxUsesChange.new : entry.extra?.maxUses;
+  const isPermanentAndUnlimited = (!maxAge || maxAge === 0) && (!maxUses || maxUses === 0);
+  if (!isPermanentAndUnlimited) return;
+
+  const codeChange = (entry.changes || []).find(c => c.key === 'code');
+  const code = codeChange ? codeChange.new : null;
+  if (code) {
+    await guild.invites.delete(code, 'Protection anti-nuke : invitation permanente et illimitée non autorisée').catch(() => {});
+  }
+
+  const member = await guild.members.fetch(executorId).catch(() => null);
+  if (!member) return;
+
+  const label = `Création d'une invitation permanente et illimitée${code ? ` (code ${code})` : ''} — supprimée automatiquement`;
   const { resultat, finalLabel } = await punishWithFloodCheck(guild, member, protection, label);
   await logAlert(guild, protection, finalLabel, member, resultat);
 }
@@ -295,6 +347,9 @@ async function handleAuditLogEntry(entry, guild) {
   }
   if (entry.action === AuditLogEvent.BotAdd) {
     return handleBotAdd(entry, guild, protection, executorId);
+  }
+  if (entry.action === AuditLogEvent.InviteCreate) {
+    return handleInviteCreate(entry, guild, protection, executorId);
   }
 
   if (!WATCHED_ACTIONS.has(entry.action)) return;
