@@ -1,5 +1,6 @@
 const { load, save } = require('../storage');
 const { checkSpam } = require('../handlers/antiSpamHandler');
+const { checkAutomod } = require('../handlers/automodHandler');
 const { assignIfStaffReply } = require('../handlers/ticketHandler');
 
 function extractField(content, label) {
@@ -18,6 +19,10 @@ module.exports = {
     // Anti-spam / anti-mention de masse (avant tout le reste)
     const wasSpam = await checkSpam(message, data.config.protection).catch(() => false);
     if (wasSpam) return;
+
+    // Auto-modération de contenu (mots interdits, liens d'invitation)
+    const wasAutomod = await checkAutomod(message, data.config.protection).catch(() => false);
+    if (wasAutomod) return;
 
     // Assignation automatique des tickets au premier message d'un membre du support
     await assignIfStaffReply(message).catch(() => {});

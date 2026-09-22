@@ -55,6 +55,18 @@ function defaultData() {
         reminderHours: 24,
         categories: [],
         counter: 0
+      },
+      automod: {
+        enabled: false,
+        bannedWords: [],
+        blockInvites: false,
+        logChannel: null
+      },
+      modlog: {
+        messageEdit: null,
+        messageDelete: null,
+        nickname: null,
+        voice: null
       }
     },
     absences: {},

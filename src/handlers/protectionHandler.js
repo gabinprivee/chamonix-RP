@@ -228,49 +228,6 @@ async function handleChannelUpdate(entry, guild, protection, executorId) {
   await logAlert(guild, protection, finalLabel, member, resultat);
 }
 
-async function handleMemberUpdate(oldMember, newMember) {
-  const data = load(newMember.guild.id);
-  const protection = data.config.protection;
-  if (!protection.enabled) return;
-  if (await isExempt(newMember.guild, newMember.id, protection)) return;
-  if (newMember.id === newMember.guild.ownerId) return;
-
-  const addedRoles = newMember.roles.cache.filter(r => !oldMember.roles.cache.has(r.id));
-  if (!addedRoles.size) return;
-
-  await new Promise(res => setTimeout(res, 2000));
-
-  const fresh = await newMember.fetch().catch(() => null);
-  if (!fresh) return;
-  const stillHas = addedRoles.filter(r => fresh.roles.cache.has(r.id));
-  if (!stillHas.size) return;
-
-  const auditLogs = await newMember.guild.fetchAuditLogs({ type: AuditLogEvent.MemberRoleUpdate, limit: 5 }).catch(() => null);
-  let effectiveStillHas = stillHas;
-  if (auditLogs) {
-    const recentEntry = auditLogs.entries.find(e => e.targetId === newMember.id && Date.now() - e.createdTimestamp < 10000);
-    if (recentEntry && recentEntry.executorId) {
-      if (recentEntry.executorId === newMember.guild.client.user.id) return; // attribué par le bot lui-même (rankup, sanction, captcha, absence...)
-      if (await isExempt(newMember.guild, recentEntry.executorId, protection)) return; // attribution légitime par quelqu'un d'exempté
-      if (recentEntry.executorId === newMember.id) {
-        // Auto-attribution (onboarding, choix de rôle par le membre) : normal,
-        // sauf si le rôle est explicitement marqué "sensible".
-        effectiveStillHas = stillHas.filter(r => protection.dangerousRoles.includes(r.id));
-      }
-    } else {
-      // Aucune entrée trouvée : origine incertaine (souvent aussi de l'onboarding),
-      // on reste prudent et ne bloque que les rôles marqués "sensibles".
-      effectiveStillHas = stillHas.filter(r => protection.dangerousRoles.includes(r.id));
-    }
-  }
-  if (!effectiveStillHas.size) return;
-
-  await fresh.roles.remove(effectiveStillHas.map(r => r.id)).catch(() => {});
-  const label = `Attribution non autorisée de rôle(s) (${effectiveStillHas.map(r => r.name).join(', ')})`;
-  const resultat = await punishAndNotify(fresh.guild, fresh, protection.punishment, label);
-  await logAlert(fresh.guild, protection, label, fresh, resultat);
-}
-
 /**
  * Un bot ajouté par quelqu'un de non whitelist est expulsé immédiatement,
  * en plus de sanctionner la personne qui l'a invité.
@@ -362,4 +319,4 @@ async function handleAuditLogEntry(entry, guild) {
   await logAlert(guild, protection, finalLabel, member, resultat);
 }
 
-module.exports = { handleAuditLogEntry, handleMemberUpdate, punish, punishAndNotify, logAlert, notifyMember, isExempt };
+module.exports = { handleAuditLogEntry, punish, punishAndNotify, logAlert, notifyMember, isExempt };
