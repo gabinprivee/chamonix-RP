@@ -3,7 +3,9 @@ const { load } = require('../storage');
 
 const WATCHED_ACTIONS = new Set([
   AuditLogEvent.ChannelDelete,
+  AuditLogEvent.ChannelCreate,
   AuditLogEvent.RoleDelete,
+  AuditLogEvent.RoleCreate,
   AuditLogEvent.MemberBanAdd,
   AuditLogEvent.MemberKick,
   AuditLogEvent.WebhookCreate
@@ -11,7 +13,9 @@ const WATCHED_ACTIONS = new Set([
 
 const ACTION_LABELS = {
   [AuditLogEvent.ChannelDelete]: 'Suppression de salon',
+  [AuditLogEvent.ChannelCreate]: 'Création de salon',
   [AuditLogEvent.RoleDelete]: 'Suppression de rôle',
+  [AuditLogEvent.RoleCreate]: 'Création de rôle',
   [AuditLogEvent.MemberBanAdd]: 'Bannissement',
   [AuditLogEvent.MemberKick]: 'Expulsion',
   [AuditLogEvent.WebhookCreate]: "Création d'un webhook"
