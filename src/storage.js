@@ -67,6 +67,13 @@ function defaultData() {
         messageDelete: null,
         nickname: null,
         voice: null
+      },
+      rules: {
+        channelId: null,
+        messageId: null,
+        roleId: null,
+        text: null,
+        acceptedCount: 0
       }
     },
     absences: {},
@@ -74,7 +81,8 @@ function defaultData() {
     identities: {},
     jails: {},
     muteHistory: {},
-    tickets: {}
+    tickets: {},
+    ruleAcceptances: {}
   };
 }
 
@@ -117,6 +125,7 @@ function load(guildId) {
   if (!data.jails) data.jails = {};
   if (!data.muteHistory) data.muteHistory = {};
   if (!data.tickets) data.tickets = {};
+  if (!data.ruleAcceptances) data.ruleAcceptances = {};
   return data;
 }
 

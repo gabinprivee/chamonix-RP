@@ -6,6 +6,8 @@ const annonce = require('../handlers/annonceHandler');
 const captcha = require('../handlers/captchaHandler');
 const rankupPanel = require('../handlers/rankupPanelHandler');
 const ticket = require('../handlers/ticketHandler');
+const rules = require('../handlers/rulesHandler');
+const { load, save } = require('../storage');
 
 module.exports = {
   name: 'interactionCreate',
@@ -51,6 +53,7 @@ module.exports = {
         if (id === 'rankup_panel_msg_down') return rankupPanel.handleMessageButton(interaction, 'down');
 
         if (id === 'ticket_close') return ticket.closeTicket(interaction);
+        if (id === 'rules_accept') return rules.handleAccept(interaction);
         return;
       }
 
@@ -104,6 +107,14 @@ module.exports = {
         }
         if (id === 'rankup_panel_msg_up_modal') return rankupPanel.handleMessageModalSubmit(interaction, 'up');
         if (id === 'rankup_panel_msg_down_modal') return rankupPanel.handleMessageModalSubmit(interaction, 'down');
+        if (id.startsWith('rules_config_modal_')) {
+          const roleId = id.replace('rules_config_modal_', '');
+          const data = load(interaction.guild.id);
+          data.config.rules.roleId = roleId;
+          data.config.rules.text = interaction.fields.getTextInputValue('texte');
+          save(interaction.guild.id, data);
+          return interaction.reply({ content: '✅ Règlement enregistré. Utilise `/rules-panel` pour le poster.', ephemeral: true });
+        }
         return;
       }
     } catch (err) {

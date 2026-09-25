@@ -117,25 +117,32 @@ async function punishWithFloodCheck(guild, member, protection, label) {
  */
 async function handleRoleAssign(entry, guild, protection, executorId) {
   const addChange = entry.changes?.find(c => c.key === '$add');
-  const allAddedRoles = addChange?.new || [];
-  if (!allAddedRoles.length) return;
+  const removeChange = entry.changes?.find(c => c.key === '$remove');
+  const addedRolesRaw = addChange?.new || [];
+  const removedRolesRaw = removeChange?.new || [];
+  if (!addedRolesRaw.length && !removedRolesRaw.length) return;
 
   const isSelfAssign = entry.targetId === executorId;
   // Auto-attribution (onboarding Discord, sélection de rôle par soi-même) : normal,
-  // on ne bloque que si le rôle est explicitement marqué "sensible".
-  // Attribution à quelqu'un d'autre : toujours bloquée si l'auteur n'est pas whitelist.
-  const addedRoles = isSelfAssign ? allAddedRoles.filter(r => protection.dangerousRoles.includes(r.id)) : allAddedRoles;
-  if (!addedRoles.length) return;
+  // on ne bloque que si le rôle est explicitement marqué "sensible". On ne protège
+  // jamais quelqu'un contre le retrait d'un rôle qu'il s'est retiré lui-même.
+  const addedRoles = isSelfAssign ? addedRolesRaw.filter(r => protection.dangerousRoles.includes(r.id)) : addedRolesRaw;
+  const removedRoles = isSelfAssign ? [] : removedRolesRaw;
+  if (!addedRoles.length && !removedRoles.length) return;
 
   const target = await guild.members.fetch(entry.targetId).catch(() => null);
   if (target) {
-    await target.roles.remove(addedRoles.map(r => r.id)).catch(() => {});
+    if (addedRoles.length) await target.roles.remove(addedRoles.map(r => r.id)).catch(() => {});
+    if (removedRoles.length) await target.roles.add(removedRoles.map(r => r.id)).catch(() => {}); // restaure ce qui a été retiré
   }
 
   const member = await guild.members.fetch(executorId).catch(() => null);
   if (!member) return;
 
-  const label = `Attribution non autorisée de rôle(s) (${addedRoles.map(r => r.name).join(', ')}) à ${target || entry.targetId}`;
+  const parts = [];
+  if (addedRoles.length) parts.push(`ajout de (${addedRoles.map(r => r.name).join(', ')})`);
+  if (removedRoles.length) parts.push(`retrait de (${removedRoles.map(r => r.name).join(', ')}) — restauré`);
+  const label = `Modification non autorisée de rôle(s) sur ${target || entry.targetId} : ${parts.join(' + ')}`;
   const { resultat, finalLabel } = await punishWithFloodCheck(guild, member, protection, label);
   await logAlert(guild, protection, finalLabel, member, resultat);
 }
