@@ -74,6 +74,11 @@ function defaultData() {
         roleId: null,
         text: null,
         acceptedCount: 0
+      },
+      bda: {
+        waitingChannelId: null,
+        notifyChannelId: null,
+        notifyRoleId: null
       }
     },
     absences: {},

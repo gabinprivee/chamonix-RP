@@ -7,6 +7,7 @@ const captcha = require('../handlers/captchaHandler');
 const rankupPanel = require('../handlers/rankupPanelHandler');
 const ticket = require('../handlers/ticketHandler');
 const rules = require('../handlers/rulesHandler');
+const bda = require('../handlers/bdaHandler');
 const { load, save } = require('../storage');
 
 module.exports = {
@@ -54,6 +55,8 @@ module.exports = {
 
         if (id === 'ticket_close') return ticket.closeTicket(interaction);
         if (id === 'rules_accept') return rules.handleAccept(interaction);
+        if (id.startsWith('bda_accept_')) return bda.handleAccept(interaction, id.replace('bda_accept_', ''));
+        if (id.startsWith('bda_refuse_')) return bda.handleRefuse(interaction, id.replace('bda_refuse_', ''));
         return;
       }
 
